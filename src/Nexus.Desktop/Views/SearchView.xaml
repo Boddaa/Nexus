@@ -1,0 +1,36 @@
+<UserControl x:Class="Nexus.Desktop.Views.SearchView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <Grid Margin="25">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="🔍 Hybrid Knowledge Search" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Text="Search across notes, documents, mind map concepts, and tasks using Keyword + Vector AI." FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Search Bar -->
+        <TextBox Grid.Row="1"
+                 Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                 Style="{StaticResource ModernTextBox}"
+                 FontSize="16"
+                 Padding="14,12"
+                 Margin="0,0,0,20" />
+
+        <!-- Search Results Area -->
+        <Border Grid.Row="2" Style="{StaticResource ModernCard}" Padding="20">
+            <TextBlock Text="Type a query above to search your entire knowledge base."
+                       Foreground="{StaticResource TextMutedBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+    </Grid>
+</UserControl>

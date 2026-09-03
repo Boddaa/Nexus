@@ -1,0 +1,158 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nexus.Application.Common.Models;
+using Nexus.Application.DTOs.Workspaces;
+using Nexus.Desktop.Models;
+using Nexus.Desktop.Services;
+
+namespace Nexus.Desktop.ViewModels;
+
+public partial class HomeViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+    private readonly INavigationService _navigationService;
+
+    [ObservableProperty]
+    private string _workspaceTitle = "Workspace";
+
+    [ObservableProperty]
+    private string _welcomeMessage = "Welcome to NEXUS";
+
+    [ObservableProperty]
+    private int _notesCount;
+
+    [ObservableProperty]
+    private int _documentsCount;
+
+    [ObservableProperty]
+    private int _tasksCount;
+
+    public HomeViewModel(UserSession userSession, INavigationService navigationService)
+    {
+        _userSession = userSession;
+        _navigationService = navigationService;
+
+        var ws = _userSession.SelectedWorkspace;
+        if (ws != null)
+        {
+            WorkspaceTitle = $"{ws.Icon} {ws.Name}";
+            WelcomeMessage = $"Welcome back, {_userSession.CurrentUser?.FullName ?? "Explorer"}!";
+            NotesCount = ws.NotesCount;
+            DocumentsCount = ws.DocumentsCount;
+            TasksCount = ws.TasksCount;
+        }
+    }
+
+    [RelayCommand]
+    private void GoToNotes() => _navigationService.NavigateTo<NotesViewModel>();
+
+    [RelayCommand]
+    private void GoToDocuments() => _navigationService.NavigateTo<DocumentsViewModel>();
+
+    [RelayCommand]
+    private void GoToBoards() => _navigationService.NavigateTo<BoardsViewModel>();
+
+    [RelayCommand]
+    private void GoToMindMaps() => _navigationService.NavigateTo<MindMapsViewModel>();
+
+    [RelayCommand]
+    private void GoToStudy() => _navigationService.NavigateTo<StudyViewModel>();
+}
+
+
+
+public partial class DocumentsViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _statusInfo = "Drag and drop PDF/Docs here to ingest into your AI Knowledge Engine.";
+
+    public DocumentsViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+    }
+}
+
+public partial class BoardsViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _boardTitle = "EF Core Study Board";
+
+    public BoardsViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+    }
+}
+
+public partial class MindMapsViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _mindMapTitle = "Knowledge Graph & Mind Map";
+
+    public MindMapsViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+    }
+}
+
+public partial class StudyViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _studyTopic = "Current Review Topics";
+
+    public StudyViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+    }
+}
+
+public partial class SearchViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    public SearchViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+    }
+}
+
+public partial class AiAssistantViewModel : ViewModelBase
+{
+    private readonly UserSession _userSession;
+
+    [ObservableProperty]
+    private string _inputMessage = string.Empty;
+
+    [ObservableProperty]
+    private ObservableCollection<ChatMessage> _messages = new();
+
+    public AiAssistantViewModel(UserSession userSession)
+    {
+        _userSession = userSession;
+        Messages.Add(new ChatMessage(Domain.Enums.AiRole.Assistant, "Hello! I am your NEXUS AI Assistant. Ask me anything about your documents, notes, or study topics."));
+    }
+
+    [RelayCommand]
+    private void SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(InputMessage)) return;
+
+        var userText = InputMessage.Trim();
+        Messages.Add(new ChatMessage(Domain.Enums.AiRole.User, userText));
+        InputMessage = string.Empty;
+
+        // Mock AI response
+        Messages.Add(new ChatMessage(Domain.Enums.AiRole.Assistant, $"I found relevant context for '{userText}' in your workspace. (Sources: EF Core Documentation.pdf, Page 12)"));
+    }
+}

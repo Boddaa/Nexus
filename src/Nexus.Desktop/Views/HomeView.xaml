@@ -1,0 +1,91 @@
+<UserControl x:Class="Nexus.Desktop.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="30">
+            <!-- Header -->
+            <TextBlock Text="{Binding WorkspaceTitle}"
+                       FontSize="30"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       Margin="0,0,0,6" />
+            <TextBlock Text="{Binding WelcomeMessage}"
+                       FontSize="15"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Margin="0,0,0,30" />
+
+            <!-- Quick Stats Grid -->
+            <UniformGrid Columns="3" Margin="0,0,0,30">
+                <!-- Notes Stat Card -->
+                <Border Style="{StaticResource ModernCard}" Margin="0,0,15,0" Cursor="Hand">
+                    <Border.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding GoToNotesCommand}" />
+                    </Border.InputBindings>
+                    <StackPanel>
+                        <TextBlock Text="📝 Notes" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10" />
+                        <TextBlock Text="{Binding NotesCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentPrimaryBrush}" />
+                        <TextBlock Text="Structured knowledge notes" FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Documents Stat Card -->
+                <Border Style="{StaticResource ModernCard}" Margin="7,0,7,0" Cursor="Hand">
+                    <Border.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding GoToDocumentsCommand}" />
+                    </Border.InputBindings>
+                    <StackPanel>
+                        <TextBlock Text="📚 Documents" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10" />
+                        <TextBlock Text="{Binding DocumentsCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" />
+                        <TextBlock Text="PDFs, Docs &amp; Chunks" FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Tasks Stat Card -->
+                <Border Style="{StaticResource ModernCard}" Margin="15,0,0,0" Cursor="Hand">
+                    <Border.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding GoToBoardsCommand}" />
+                    </Border.InputBindings>
+                    <StackPanel>
+                        <TextBlock Text="📋 Tasks &amp; Boards" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10" />
+                        <TextBlock Text="{Binding TasksCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" />
+                        <TextBlock Text="Study workflow topics" FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Quick Actions Section -->
+            <TextBlock Text="Quick Actions &amp; Visual Thinking"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       Margin="0,0,0,16" />
+
+            <Grid Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource ModernCard}" Margin="0,0,10,0">
+                    <StackPanel>
+                        <TextBlock Text="🧠 Interactive Mind Map" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AccentPrimaryBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="Visualize concepts, connect topics, and generate structured knowledge graphs." FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
+                        <Button Content="Open Mind Maps" Command="{Binding GoToMindMapsCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource ModernCard}" Margin="10,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="🎓 AI Study &amp; Tutor" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AccentAmberBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="Practice with auto-generated flashcards, MCQs, and track weak-topic recommendations." FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
+                        <Button Content="Start Study Session" Command="{Binding GoToStudyCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

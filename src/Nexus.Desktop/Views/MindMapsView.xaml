@@ -1,0 +1,44 @@
+<UserControl x:Class="Nexus.Desktop.Views.MindMapsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <Grid Margin="25">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="🧠 Visual Mind Mapping &amp; Knowledge Graph" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Text="Explore concepts, link nodes to documents and notes, or generate AI graphs." FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Interactive Canvas Placeholder -->
+        <Border Grid.Row="1" Style="{StaticResource ModernCard}" Background="{StaticResource BgDarkestBrush}">
+            <Canvas ClipToBounds="True">
+                <!-- Center Node -->
+                <Border Canvas.Left="300" Canvas.Top="180" Background="{StaticResource PrimaryGradientBrush}" CornerRadius="10" Padding="16,12">
+                    <TextBlock Text="🧠 EF Core Architecture" FontWeight="Bold" Foreground="#FFFFFF" />
+                </Border>
+
+                <!-- Sub Node 1 -->
+                <Border Canvas.Left="120" Canvas.Top="100" Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource AccentCyanBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                    <TextBlock Text="DbContext" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+
+                <!-- Sub Node 2 -->
+                <Border Canvas.Left="480" Canvas.Top="100" Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource AccentAmberBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                    <TextBlock Text="Change Tracker" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+
+                <!-- Sub Node 3 -->
+                <Border Canvas.Left="300" Canvas.Top="300" Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource AccentEmeraldBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                    <TextBlock Text="LINQ &amp; Queries" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

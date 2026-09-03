@@ -1,0 +1,15 @@
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\bin\Debug\net10.0\Nexus.Application.deps.json
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\bin\Debug\net10.0\Nexus.Application.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\bin\Debug\net10.0\Nexus.Application.pdb
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\bin\Debug\net10.0\Nexus.Domain.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\bin\Debug\net10.0\Nexus.Domain.pdb
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.csproj.AssemblyReference.cache
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.GeneratedMSBuildEditorConfig.editorconfig
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.AssemblyInfoInputs.cache
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.AssemblyInfo.cs
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.csproj.CoreCompileInputs.cache
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Ap.EDFDCF09.Up2Date
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\refint\Nexus.Application.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.pdb
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\ref\Nexus.Application.dll

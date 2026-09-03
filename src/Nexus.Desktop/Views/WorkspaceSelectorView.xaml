@@ -1,0 +1,120 @@
+<UserControl x:Class="Nexus.Desktop.Views.WorkspaceSelectorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <Grid Background="{StaticResource BgDarkestBrush}">
+        <Border Style="{StaticResource ModernCard}"
+                Width="540"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="30">
+            <StackPanel>
+                <TextBlock Text="📂 Select Your Workspace"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           Margin="0,0,0,8" />
+                <TextBlock Text="Choose a knowledge domain or create a new workspace to get started."
+                           FontSize="14"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,0,0,20" />
+
+                <!-- Workspaces List -->
+                <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,0,0,20">
+                    <ItemsControl ItemsSource="{Binding Workspaces}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource BgHoverBrush}"
+                                        BorderBrush="{StaticResource BorderLightBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="14,12"
+                                        Margin="0,0,0,10"
+                                        Cursor="Hand">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.SelectWorkspaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="{Binding Icon}"
+                                                   FontSize="22"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,14,0" />
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="15"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="Knowledge Domain"
+                                                       FontSize="12"
+                                                       Foreground="{StaticResource TextMutedBrush}" />
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="2"
+                                                   Text="Open ➔"
+                                                   FontSize="13"
+                                                   FontWeight="Medium"
+                                                   Foreground="{StaticResource AccentPrimaryBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Create New Workspace Toggle / Section -->
+                <Button Content="+ Create New Workspace"
+                        Command="{Binding ToggleCreateModeCommand}"
+                        Style="{StaticResource SecondaryButton}"
+                        Height="40"
+                        Margin="0,0,0,16" />
+
+                <!-- Create Form -->
+                <Border Background="{StaticResource BgDarkBrush}"
+                        BorderBrush="{StaticResource BorderLightBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        Margin="0,0,0,10"
+                        Visibility="{Binding IsCreatingWorkspace, Converter={x:Null}}">
+                    <StackPanel>
+                        <TextBlock Text="Workspace Name"
+                                   FontSize="13"
+                                   FontWeight="Medium"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,0,0,6" />
+                        <TextBox Text="{Binding NewWorkspaceName, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource ModernTextBox}"
+                                 Margin="0,0,0,12" />
+
+                        <TextBlock Text="Description (Optional)"
+                                   FontSize="13"
+                                   FontWeight="Medium"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,0,0,6" />
+                        <TextBox Text="{Binding NewWorkspaceDescription, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource ModernTextBox}"
+                                 Margin="0,0,0,16" />
+
+                        <Button Content="Save &amp; Open Workspace"
+                                Command="{Binding CreateWorkspaceCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                Height="40" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
