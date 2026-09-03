@@ -175,3 +175,4 @@ D:\Me\Project-Idea\NEXUS\tests\Nexus.Infrastructure.Tests\obj\Debug\net10.0\refi
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Infrastructure.Tests\obj\Debug\net10.0\Nexus.Infrastructure.Tests.pdb
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Infrastructure.Tests\obj\Debug\net10.0\Nexus.Infrastructure.Tests.genruntimeconfig.cache
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Infrastructure.Tests\obj\Debug\net10.0\ref\Nexus.Infrastructure.Tests.dll
+D:\Me\Project-Idea\NEXUS\tests\Nexus.Infrastructure.Tests\obj\Debug\net10.0\Nexus.Infrastructure.Tests.sourcelink.json

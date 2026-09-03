@@ -20,6 +20,7 @@ public class NavigationAndViewModelTests
         services.AddSingleton<ITokenStorage, TokenStorage>();
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IApiClient, FakeApiClient>();
+        services.AddSingleton<IDialogService, FakeDialogService>();
         services.AddTransient<HomeViewModel>();
         services.AddTransient<PagesViewModel>();
         services.AddTransient<NotesViewModel>();

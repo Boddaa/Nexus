@@ -88,7 +88,7 @@
                         CornerRadius="8"
                         Padding="16"
                         Margin="0,0,0,10"
-                        Visibility="{Binding IsCreatingWorkspace, Converter={x:Null}}">
+                        Visibility="{Binding IsCreatingWorkspace, Converter={StaticResource BoolToVisConverter}}">
                     <StackPanel>
                         <TextBlock Text="Workspace Name"
                                    FontSize="13"

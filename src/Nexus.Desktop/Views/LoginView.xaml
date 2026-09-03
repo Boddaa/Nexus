@@ -31,7 +31,7 @@
                         CornerRadius="6"
                         Padding="10"
                         Margin="0,0,0,16"
-                        Visibility="{Binding ErrorMessage, Converter={x:Null}}">
+                        Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
                     <TextBlock Text="{Binding ErrorMessage}"
                                Foreground="{StaticResource AccentRoseBrush}"
                                TextWrapping="Wrap"

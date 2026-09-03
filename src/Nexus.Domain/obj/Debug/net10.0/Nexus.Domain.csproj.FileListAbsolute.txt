@@ -9,3 +9,4 @@ D:\Me\Project-Idea\NEXUS\src\Nexus.Domain\obj\Debug\net10.0\Nexus.Domain.dll
 D:\Me\Project-Idea\NEXUS\src\Nexus.Domain\obj\Debug\net10.0\refint\Nexus.Domain.dll
 D:\Me\Project-Idea\NEXUS\src\Nexus.Domain\obj\Debug\net10.0\Nexus.Domain.pdb
 D:\Me\Project-Idea\NEXUS\src\Nexus.Domain\obj\Debug\net10.0\ref\Nexus.Domain.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Domain\obj\Debug\net10.0\Nexus.Domain.sourcelink.json

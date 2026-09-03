@@ -85,7 +85,7 @@
                                     <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="15" Margin="0,0,8,0" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Column="2" Text="{Binding Children.Count}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="8,0,4,0" VerticalAlignment="Center"
-                                               Visibility="{Binding Children.Count, Converter={StaticResource BoolToVisConverter}}" />
+                                                Visibility="{Binding Children.Count, Converter={StaticResource GreaterThanZeroToVisConverter}}" />
                                 </Grid>
                             </Border>
                         </HierarchicalDataTemplate>
@@ -99,7 +99,7 @@
             <Grid>
                 <!-- When No Page is Selected -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                            Visibility="{Binding HasSelectedPage, Converter={x:Null}}">
+                            Visibility="{Binding HasSelectedPage, Converter={StaticResource InverseBoolToVisConverter}}">
                     <TextBlock Text="📄" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
                     <TextBlock Text="No Page Selected" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
                     <TextBlock Text="Select a page from the tree on the left, or create a new one to begin writing." FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,20" HorizontalAlignment="Center" />
@@ -122,11 +122,11 @@
 
                     <!-- Feedback Banners -->
                     <Border Grid.Row="0" Background="{StaticResource BgHoverBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,12"
-                            Visibility="{Binding StatusMessage, Converter={x:Null}}">
+                            Visibility="{Binding StatusMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
                         <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource AccentEmeraldBrush}" FontSize="13" FontWeight="Medium" />
                     </Border>
                     <Border Grid.Row="0" Background="#3B1824" CornerRadius="8" Padding="12,8" Margin="0,0,0,12"
-                            Visibility="{Binding ErrorMessage, Converter={x:Null}}">
+                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
                         <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource AccentRoseBrush}" FontSize="13" FontWeight="Medium" />
                     </Border>
 
@@ -156,7 +156,7 @@
                             <Button Style="{StaticResource PrimaryButton}"
                                     Command="{Binding SavePageCommand}"
                                     Margin="0,0,8,0"
-                                    IsEnabled="{Binding IsSaving, Converter={x:Null}}">
+                                    IsEnabled="{Binding IsSaving, Converter={StaticResource InverseBoolConverter}}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="💾" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
                                     <TextBlock Text="Save" FontSize="13" VerticalAlignment="Center" />

@@ -17,3 +17,4 @@ D:\Me\Project-Idea\NEXUS\src\Nexus.Infrastructure\obj\Debug\net10.0\refint\Nexus
 D:\Me\Project-Idea\NEXUS\src\Nexus.Infrastructure\obj\Debug\net10.0\Nexus.Infrastructure.pdb
 D:\Me\Project-Idea\NEXUS\src\Nexus.Infrastructure\obj\Debug\net10.0\Nexus.Infrastructure.genruntimeconfig.cache
 D:\Me\Project-Idea\NEXUS\src\Nexus.Infrastructure\obj\Debug\net10.0\ref\Nexus.Infrastructure.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Infrastructure\obj\Debug\net10.0\Nexus.Infrastructure.sourcelink.json

@@ -27,10 +27,11 @@ public partial class App : System.Windows.Application
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 
-        // State & Navigation Services
+        // State, Navigation & Dialog Services
         services.AddSingleton<UserSession>();
         services.AddSingleton<ITokenStorage, TokenStorage>();
         services.AddSingleton<INavigationService, NavigationService>();
+        services.AddSingleton<IDialogService, DialogService>();
 
         // ViewModels
         services.AddSingleton<MainViewModel>();

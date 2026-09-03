@@ -51,7 +51,7 @@
 
     <Grid>
         <!-- When Authenticated: Standard 3-Column Shell -->
-        <Grid Visibility="{Binding IsAuthenticated, Converter={x:Null}}">
+        <Grid Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisConverter}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="250" />
                 <ColumnDefinition Width="*" />
@@ -285,13 +285,13 @@
             <!-- 3. RIGHT AI SIDEBAR PANEL -->
             <Border Grid.Column="2"
                     Width="320"
-                    Visibility="{Binding IsAiPanelOpen, Converter={x:Null}}">
+                    Visibility="{Binding IsAiPanelOpen, Converter={StaticResource BoolToVisConverter}}">
                 <views:AiAssistantView />
             </Border>
         </Grid>
 
         <!-- Unauthenticated View Container (Login / Register / Workspace Selector) -->
         <ContentControl Content="{Binding CurrentView}"
-                        Visibility="{Binding IsAuthenticated, Converter={x:Null}}" />
+                        Visibility="{Binding IsAuthenticated, Converter={StaticResource InverseBoolToVisConverter}}" />
     </Grid>
 </Window>

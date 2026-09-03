@@ -178,3 +178,4 @@ D:\Me\Project-Idea\NEXUS\src\Nexus.API\obj\Debug\net10.0\Nexus.API.pdb
 D:\Me\Project-Idea\NEXUS\src\Nexus.API\obj\Debug\net10.0\Nexus.API.genruntimeconfig.cache
 D:\Me\Project-Idea\NEXUS\src\Nexus.API\obj\Debug\net10.0\ref\Nexus.API.dll
 D:\Me\Project-Idea\NEXUS\src\Nexus.API\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.InMemory.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.API\obj\Debug\net10.0\Nexus.API.sourcelink.json

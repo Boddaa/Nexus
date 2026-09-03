@@ -10,6 +10,7 @@ namespace Nexus.Desktop.ViewModels;
 public partial class PagesViewModel : ViewModelBase
 {
     private readonly IApiClient _apiClient;
+    private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
 
     [ObservableProperty]
@@ -46,13 +47,18 @@ public partial class PagesViewModel : ViewModelBase
     private int _notesCount;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isLoading;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isSaving;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isDeleting;
+
+    public bool IsBusy => IsLoading || IsSaving || IsDeleting;
 
     [ObservableProperty]
     private string? _statusMessage;
@@ -89,14 +95,15 @@ public partial class PagesViewModel : ViewModelBase
     [ObservableProperty]
     private int _moveNewOrderIndex;
 
-    public PagesViewModel(IApiClient apiClient, UserSession userSession)
+    public PagesViewModel(IApiClient apiClient, IDialogService dialogService, UserSession userSession)
     {
         _apiClient = apiClient;
+        _dialogService = dialogService;
         _userSession = userSession;
 
         if (_userSession.SelectedWorkspace != null)
         {
-            _ = LoadPageTreeAsync();
+            LoadPageTreeCommand.Execute(null);
         }
     }
 
@@ -112,21 +119,31 @@ public partial class PagesViewModel : ViewModelBase
         IsLoading = true;
         ErrorMessage = null;
 
-        var result = await _apiClient.GetPageTreeAsync(_userSession.SelectedWorkspace.Id);
-        IsLoading = false;
+        try
+        {
+            var result = await _apiClient.GetPageTreeAsync(_userSession.SelectedWorkspace.Id);
 
-        if (result.IsSuccess)
-        {
-            PageTree.Clear();
-            foreach (var node in result.Value)
+            if (result.IsSuccess)
             {
-                PageTree.Add(node);
+                PageTree.Clear();
+                foreach (var node in result.Value)
+                {
+                    PageTree.Add(node);
+                }
+                PopulateCreateParentOptions();
             }
-            PopulateParentOptions();
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -145,38 +162,50 @@ public partial class PagesViewModel : ViewModelBase
         IsLoading = true;
         ErrorMessage = null;
 
-        var result = await _apiClient.GetPageByIdAsync(_userSession.SelectedWorkspace.Id, node.Id);
-        IsLoading = false;
-
-        if (result.IsSuccess)
+        try
         {
-            SelectedPage = result.Value;
-            HasSelectedPage = true;
+            var result = await _apiClient.GetPageByIdAsync(_userSession.SelectedWorkspace.Id, node.Id);
 
-            EditorTitle = result.Value.Title;
-            EditorIcon = result.Value.Icon;
-            EditorContentJson = result.Value.ContentJson;
-            EditorOrderIndex = result.Value.OrderIndex;
-            EditorCoverImageUrl = result.Value.CoverImageUrl;
-            ChildPagesCount = result.Value.ChildPagesCount;
-            NotesCount = result.Value.NotesCount;
+            if (result.IsSuccess)
+            {
+                SelectedPage = result.Value;
+                HasSelectedPage = true;
+
+                EditorTitle = result.Value.Title;
+                EditorIcon = result.Value.Icon;
+                EditorContentJson = result.Value.ContentJson;
+                EditorOrderIndex = result.Value.OrderIndex;
+                EditorCoverImageUrl = result.Value.CoverImageUrl;
+                ChildPagesCount = result.Value.ChildPagesCount;
+                NotesCount = result.Value.NotesCount;
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
     [RelayCommand]
     public void OpenCreateDialog(string? asChildParam)
     {
+        if (IsBusy) return;
+
         bool asChild = asChildParam == "child";
         NewPageTitle = "Untitled Page";
         NewPageIcon = "📄";
         NewPageOrderIndex = 0;
         NewPageParentId = asChild && SelectedPage != null ? SelectedPage.Id : null;
 
-        PopulateParentOptions();
+        PopulateCreateParentOptions();
         IsCreateDialogOpen = true;
     }
 
@@ -189,7 +218,7 @@ public partial class PagesViewModel : ViewModelBase
     [RelayCommand]
     public async Task CreatePageAsync()
     {
-        if (_userSession.SelectedWorkspace == null) return;
+        if (_userSession.SelectedWorkspace == null || IsBusy) return;
 
         if (string.IsNullOrWhiteSpace(NewPageTitle))
         {
@@ -200,34 +229,44 @@ public partial class PagesViewModel : ViewModelBase
         IsLoading = true;
         ErrorMessage = null;
 
-        var request = new CreatePageRequest(
-            NewPageTitle.Trim(),
-            string.IsNullOrWhiteSpace(NewPageIcon) ? "📄" : NewPageIcon.Trim(),
-            null,
-            "{}",
-            NewPageParentId,
-            NewPageOrderIndex);
-
-        var result = await _apiClient.CreatePageAsync(_userSession.SelectedWorkspace.Id, request);
-        IsLoading = false;
-
-        if (result.IsSuccess)
+        try
         {
-            IsCreateDialogOpen = false;
-            await LoadPageTreeAsync();
-            await SelectPageByIdAsync(result.Value.Id);
-            StatusMessage = $"Page '{result.Value.Title}' created successfully.";
+            var request = new CreatePageRequest(
+                NewPageTitle.Trim(),
+                string.IsNullOrWhiteSpace(NewPageIcon) ? "📄" : NewPageIcon.Trim(),
+                null,
+                "{}",
+                NewPageParentId,
+                NewPageOrderIndex);
+
+            var result = await _apiClient.CreatePageAsync(_userSession.SelectedWorkspace.Id, request);
+
+            if (result.IsSuccess)
+            {
+                IsCreateDialogOpen = false;
+                await LoadPageTreeAsync();
+                await SelectPageByIdAsync(result.Value.Id);
+                StatusMessage = $"Page '{result.Value.Title}' created successfully.";
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task SavePageAsync()
     {
-        if (_userSession.SelectedWorkspace == null || SelectedPage == null) return;
+        if (_userSession.SelectedWorkspace == null || SelectedPage == null || IsBusy) return;
 
         if (string.IsNullOrWhiteSpace(EditorTitle))
         {
@@ -239,36 +278,56 @@ public partial class PagesViewModel : ViewModelBase
         ErrorMessage = null;
         StatusMessage = null;
 
-        var request = new UpdatePageRequest(
-            EditorTitle.Trim(),
-            string.IsNullOrWhiteSpace(EditorIcon) ? "📄" : EditorIcon.Trim(),
-            EditorCoverImageUrl?.Trim(),
-            EditorContentJson ?? "{}",
-            EditorOrderIndex);
-
-        var result = await _apiClient.UpdatePageAsync(_userSession.SelectedWorkspace.Id, SelectedPage.Id, request);
-        IsSaving = false;
-
-        if (result.IsSuccess)
+        try
         {
-            SelectedPage = result.Value;
-            await LoadPageTreeAsync();
-            StatusMessage = "Page saved successfully.";
+            var request = new UpdatePageRequest(
+                EditorTitle.Trim(),
+                string.IsNullOrWhiteSpace(EditorIcon) ? "📄" : EditorIcon.Trim(),
+                EditorCoverImageUrl?.Trim(),
+                EditorContentJson ?? "{}",
+                EditorOrderIndex);
+
+            var result = await _apiClient.UpdatePageAsync(_userSession.SelectedWorkspace.Id, SelectedPage.Id, request);
+
+            if (result.IsSuccess)
+            {
+                SelectedPage = result.Value;
+                EditorTitle = result.Value.Title;
+                EditorIcon = result.Value.Icon;
+                EditorContentJson = result.Value.ContentJson;
+                EditorOrderIndex = result.Value.OrderIndex;
+                EditorCoverImageUrl = result.Value.CoverImageUrl;
+                ChildPagesCount = result.Value.ChildPagesCount;
+                NotesCount = result.Value.NotesCount;
+
+                await LoadPageTreeAsync();
+                SelectedTreeNode = FindNode(PageTree, result.Value.Id);
+                HasSelectedPage = true;
+                StatusMessage = "Page saved successfully.";
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsSaving = false;
         }
     }
 
     [RelayCommand]
     public void OpenMoveDialog()
     {
-        if (SelectedPage == null) return;
+        if (SelectedPage == null || IsBusy) return;
 
         MoveTargetParentId = SelectedPage.ParentPageId;
         MoveNewOrderIndex = SelectedPage.OrderIndex;
-        PopulateParentOptions();
+        PopulateMoveParentOptions();
         IsMoveDialogOpen = true;
     }
 
@@ -281,62 +340,90 @@ public partial class PagesViewModel : ViewModelBase
     [RelayCommand]
     public async Task MovePageAsync()
     {
-        if (_userSession.SelectedWorkspace == null || SelectedPage == null) return;
+        if (_userSession.SelectedWorkspace == null || SelectedPage == null || IsBusy) return;
 
         IsLoading = true;
         ErrorMessage = null;
 
-        var request = new MovePageRequest(MoveTargetParentId, MoveNewOrderIndex);
-        var result = await _apiClient.MovePageAsync(_userSession.SelectedWorkspace.Id, SelectedPage.Id, request);
-        IsLoading = false;
+        try
+        {
+            var targetPageId = SelectedPage.Id;
+            var request = new MovePageRequest(MoveTargetParentId, MoveNewOrderIndex);
+            var result = await _apiClient.MovePageAsync(_userSession.SelectedWorkspace.Id, targetPageId, request);
 
-        if (result.IsSuccess)
-        {
-            IsMoveDialogOpen = false;
-            await LoadPageTreeAsync();
-            await SelectPageByIdAsync(SelectedPage.Id);
-            StatusMessage = "Page moved successfully.";
+            if (result.IsSuccess)
+            {
+                IsMoveDialogOpen = false;
+                await LoadPageTreeAsync();
+                await SelectPageByIdAsync(targetPageId);
+                StatusMessage = "Page moved successfully.";
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task DeletePageAsync()
     {
-        if (_userSession.SelectedWorkspace == null || SelectedPage == null) return;
+        if (_userSession.SelectedWorkspace == null || SelectedPage == null || IsBusy) return;
+
+        bool confirmed = await _dialogService.ConfirmAsync(
+            "Delete Page",
+            $"Are you sure you want to delete page '{SelectedPage.Title}'?\n\nThis will permanently delete this page and all of its subpages.");
+
+        if (!confirmed) return;
 
         IsDeleting = true;
         ErrorMessage = null;
         StatusMessage = null;
 
-        var deletedTitle = SelectedPage.Title;
-        var result = await _apiClient.DeletePageAsync(_userSession.SelectedWorkspace.Id, SelectedPage.Id);
-        IsDeleting = false;
+        try
+        {
+            var deletedTitle = SelectedPage.Title;
+            var result = await _apiClient.DeletePageAsync(_userSession.SelectedWorkspace.Id, SelectedPage.Id);
 
-        if (result.IsSuccess)
-        {
-            SelectedPage = null;
-            SelectedTreeNode = null;
-            HasSelectedPage = false;
-            await LoadPageTreeAsync();
-            StatusMessage = $"Page '{deletedTitle}' and its subpages were deleted.";
+            if (result.IsSuccess)
+            {
+                SelectedPage = null;
+                SelectedTreeNode = null;
+                HasSelectedPage = false;
+                await LoadPageTreeAsync();
+                StatusMessage = $"Page '{deletedTitle}' and its subpages were deleted.";
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsDeleting = false;
         }
     }
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        if (IsBusy) return;
         await LoadPageTreeAsync();
     }
 
-    private void PopulateParentOptions()
+    private void PopulateCreateParentOptions()
     {
         ParentPageOptions.Clear();
         ParentPageOptions.Add(new PageSummaryDto(Guid.Empty, Guid.Empty, null, "📁 Root (No Parent)", "📁", 0));
@@ -345,9 +432,6 @@ public partial class PagesViewModel : ViewModelBase
         {
             foreach (var node in nodes)
             {
-                // Exclude current page from being its own parent in selection
-                if (SelectedPage != null && node.Id == SelectedPage.Id) continue;
-
                 ParentPageOptions.Add(new PageSummaryDto(node.Id, node.WorkspaceId, node.ParentPageId, $"{prefix}{node.Icon} {node.Title}", node.Icon, node.OrderIndex));
                 if (node.Children.Count > 0)
                 {
@@ -359,20 +443,70 @@ public partial class PagesViewModel : ViewModelBase
         CollectFlattened(PageTree);
     }
 
-    private async Task SelectPageByIdAsync(Guid pageId)
+    private void PopulateMoveParentOptions()
     {
-        PageTreeNodeDto? FindNode(IReadOnlyList<PageTreeNodeDto> nodes)
+        ParentPageOptions.Clear();
+        ParentPageOptions.Add(new PageSummaryDto(Guid.Empty, Guid.Empty, null, "📁 Root (No Parent)", "📁", 0));
+
+        var excludedIds = SelectedPage != null ? GetDescendantsAndSelf(SelectedPage.Id) : new HashSet<Guid>();
+
+        void CollectValidNodes(IReadOnlyList<PageTreeNodeDto> nodes, string prefix = "")
         {
             foreach (var node in nodes)
             {
-                if (node.Id == pageId) return node;
-                var found = FindNode(node.Children);
-                if (found != null) return found;
+                if (excludedIds.Contains(node.Id)) continue; // Exclude self and all descendants!
+
+                ParentPageOptions.Add(new PageSummaryDto(
+                    node.Id,
+                    node.WorkspaceId,
+                    node.ParentPageId,
+                    $"{prefix}{node.Icon} {node.Title}",
+                    node.Icon,
+                    node.OrderIndex));
+
+                if (node.Children.Count > 0)
+                {
+                    CollectValidNodes(node.Children, prefix + "  └─ ");
+                }
             }
-            return null;
         }
 
-        var targetNode = FindNode(PageTree);
+        CollectValidNodes(PageTree);
+    }
+
+    public HashSet<Guid> GetDescendantsAndSelf(Guid rootId)
+    {
+        var set = new HashSet<Guid> { rootId };
+        var node = FindNode(PageTree, rootId);
+        if (node != null)
+        {
+            void AddSubtree(PageTreeNodeDto parent)
+            {
+                foreach (var child in parent.Children)
+                {
+                    set.Add(child.Id);
+                    AddSubtree(child);
+                }
+            }
+            AddSubtree(node);
+        }
+        return set;
+    }
+
+    private static PageTreeNodeDto? FindNode(IReadOnlyList<PageTreeNodeDto> nodes, Guid pageId)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == pageId) return node;
+            var found = FindNode(node.Children, pageId);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private async Task SelectPageByIdAsync(Guid pageId)
+    {
+        var targetNode = FindNode(PageTree, pageId);
         if (targetNode != null)
         {
             await SelectPageAsync(targetNode);

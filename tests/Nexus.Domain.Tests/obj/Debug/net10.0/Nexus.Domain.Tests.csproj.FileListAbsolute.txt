@@ -98,3 +98,4 @@ D:\Me\Project-Idea\NEXUS\tests\Nexus.Domain.Tests\obj\Debug\net10.0\refint\Nexus
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Domain.Tests\obj\Debug\net10.0\Nexus.Domain.Tests.pdb
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Domain.Tests\obj\Debug\net10.0\Nexus.Domain.Tests.genruntimeconfig.cache
 D:\Me\Project-Idea\NEXUS\tests\Nexus.Domain.Tests\obj\Debug\net10.0\ref\Nexus.Domain.Tests.dll
+D:\Me\Project-Idea\NEXUS\tests\Nexus.Domain.Tests\obj\Debug\net10.0\Nexus.Domain.Tests.sourcelink.json

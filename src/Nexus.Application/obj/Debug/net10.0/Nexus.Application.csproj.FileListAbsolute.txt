@@ -13,3 +13,4 @@ D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Applicati
 D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\refint\Nexus.Application.dll
 D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.pdb
 D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\ref\Nexus.Application.dll
+D:\Me\Project-Idea\NEXUS\src\Nexus.Application\obj\Debug\net10.0\Nexus.Application.sourcelink.json

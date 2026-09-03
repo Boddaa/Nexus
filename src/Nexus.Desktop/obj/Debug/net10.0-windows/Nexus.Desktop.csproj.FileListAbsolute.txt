@@ -73,3 +73,4 @@ D:\Me\Project-Idea\NEXUS\src\Nexus.Desktop\obj\Debug\net10.0-windows\Nexus.Deskt
 D:\Me\Project-Idea\NEXUS\src\Nexus.Desktop\obj\Debug\net10.0-windows\ref\Nexus.Desktop.dll
 D:\Me\Project-Idea\NEXUS\src\Nexus.Desktop\obj\Debug\net10.0-windows\Views\PagesView.baml
 D:\Me\Project-Idea\NEXUS\src\Nexus.Desktop\obj\Debug\net10.0-windows\Views\PagesView.g.cs
+D:\Me\Project-Idea\NEXUS\src\Nexus.Desktop\obj\Debug\net10.0-windows\Nexus.Desktop.sourcelink.json

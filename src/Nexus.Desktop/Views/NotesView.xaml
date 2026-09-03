@@ -178,7 +178,7 @@
                                     <!-- Bottom Row: Meta Badge -->
                                     <StackPanel Grid.Row="2" Orientation="Horizontal">
                                         <Border Background="{StaticResource BgCardBrush}" CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
-                                                Visibility="{Binding PageTitle, Converter={x:Null}}">
+                                                Visibility="{Binding PageTitle, Converter={StaticResource StringNotEmptyToVisConverter}}">
                                             <TextBlock Text="{Binding PageTitle, StringFormat='📄 {0}'}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="130" />
                                         </Border>
                                         <TextBlock Text="{Binding CreatedAtUtc, StringFormat='{}{0:MMM dd}'}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
@@ -196,7 +196,7 @@
             <Grid>
                 <!-- When No Note is Selected -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                            Visibility="{Binding HasSelectedNote, Converter={x:Null}}">
+                            Visibility="{Binding HasSelectedNote, Converter={StaticResource InverseBoolToVisConverter}}">
                     <TextBlock Text="📝" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
                     <TextBlock Text="No Note Selected" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
                     <TextBlock Text="Select a note from the left, or create a new one to begin capturing ideas." FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,20" HorizontalAlignment="Center" />
@@ -219,11 +219,11 @@
 
                     <!-- Feedback Banners -->
                     <Border Grid.Row="0" Background="{StaticResource BgHoverBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,12"
-                            Visibility="{Binding StatusMessage, Converter={x:Null}}">
+                            Visibility="{Binding StatusMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
                         <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource AccentEmeraldBrush}" FontSize="13" FontWeight="Medium" />
                     </Border>
                     <Border Grid.Row="0" Background="#3B1824" CornerRadius="8" Padding="12,8" Margin="0,0,0,12"
-                            Visibility="{Binding ErrorMessage, Converter={x:Null}}">
+                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
                         <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource AccentRoseBrush}" FontSize="13" FontWeight="Medium" />
                     </Border>
 
@@ -260,7 +260,7 @@
                             <Button Style="{StaticResource PrimaryButton}"
                                     Command="{Binding SaveNoteCommand}"
                                     Margin="0,0,8,0"
-                                    IsEnabled="{Binding IsSaving, Converter={x:Null}}">
+                                    IsEnabled="{Binding IsSaving, Converter={StaticResource InverseBoolConverter}}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="💾" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
                                     <TextBlock Text="Save" FontSize="13" VerticalAlignment="Center" />

@@ -11,6 +11,7 @@ namespace Nexus.Desktop.ViewModels;
 public partial class NotesViewModel : ViewModelBase
 {
     private readonly IApiClient _apiClient;
+    private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
 
     [ObservableProperty]
@@ -63,15 +64,20 @@ public partial class NotesViewModel : ViewModelBase
     [ObservableProperty]
     private ObservableCollection<PageSummaryDto> _pageFilterOptions = new();
 
-    // Async state
+    // Async state & busy guards
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isLoading;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isSaving;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isDeleting;
+
+    public bool IsBusy => IsLoading || IsSaving || IsDeleting;
 
     [ObservableProperty]
     private string? _statusMessage;
@@ -79,21 +85,22 @@ public partial class NotesViewModel : ViewModelBase
     [ObservableProperty]
     private string? _errorMessage;
 
-    public NotesViewModel(IApiClient apiClient, UserSession userSession)
+    public NotesViewModel(IApiClient apiClient, IDialogService dialogService, UserSession userSession)
     {
         _apiClient = apiClient;
+        _dialogService = dialogService;
         _userSession = userSession;
 
         if (_userSession.SelectedWorkspace != null)
         {
-            _ = InitializeAsync();
+            InitializeSafe();
         }
     }
 
-    public async Task InitializeAsync()
+    private void InitializeSafe()
     {
-        await LoadPageFilterOptionsAsync();
-        await LoadNotesAsync();
+        _ = LoadPageFilterOptionsAsync();
+        _ = LoadNotesAsync();
     }
 
     [RelayCommand]
@@ -101,25 +108,32 @@ public partial class NotesViewModel : ViewModelBase
     {
         if (_userSession.SelectedWorkspace == null) return;
 
-        var treeResult = await _apiClient.GetPageTreeAsync(_userSession.SelectedWorkspace.Id);
-        if (treeResult.IsSuccess)
+        try
         {
-            PageFilterOptions.Clear();
-            PageFilterOptions.Add(new PageSummaryDto(Guid.Empty, Guid.Empty, null, "All Pages", "📚", 0));
-
-            void FlattenTree(IReadOnlyList<PageTreeNodeDto> nodes, string prefix = "")
+            var treeResult = await _apiClient.GetPageTreeAsync(_userSession.SelectedWorkspace.Id);
+            if (treeResult.IsSuccess)
             {
-                foreach (var node in nodes)
+                PageFilterOptions.Clear();
+                PageFilterOptions.Add(new PageSummaryDto(Guid.Empty, Guid.Empty, null, "All Pages", "📚", 0));
+
+                void FlattenTree(IReadOnlyList<PageTreeNodeDto> nodes, string prefix = "")
                 {
-                    PageFilterOptions.Add(new PageSummaryDto(node.Id, node.WorkspaceId, node.ParentPageId, $"{prefix}{node.Icon} {node.Title}", node.Icon, node.OrderIndex));
-                    if (node.Children.Count > 0)
+                    foreach (var node in nodes)
                     {
-                        FlattenTree(node.Children, prefix + "  └─ ");
+                        PageFilterOptions.Add(new PageSummaryDto(node.Id, node.WorkspaceId, node.ParentPageId, $"{prefix}{node.Icon} {node.Title}", node.Icon, node.OrderIndex));
+                        if (node.Children.Count > 0)
+                        {
+                            FlattenTree(node.Children, prefix + "  └─ ");
+                        }
                     }
                 }
-            }
 
-            FlattenTree(treeResult.Value);
+                FlattenTree(treeResult.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
         }
     }
 
@@ -141,21 +155,31 @@ public partial class NotesViewModel : ViewModelBase
 
         bool? isPinnedParam = ShowOnlyPinned ? true : null;
 
-        var result = await _apiClient.GetNotesAsync(_userSession.SelectedWorkspace.Id, pageIdParam, isPinnedParam);
-        IsLoading = false;
+        try
+        {
+            var result = await _apiClient.GetNotesAsync(_userSession.SelectedWorkspace.Id, pageIdParam, isPinnedParam);
 
-        if (result.IsSuccess)
-        {
-            Notes.Clear();
-            foreach (var note in result.Value)
+            if (result.IsSuccess)
             {
-                Notes.Add(note);
+                Notes.Clear();
+                foreach (var note in result.Value)
+                {
+                    Notes.Add(note);
+                }
+                ApplyLocalFilter();
             }
-            ApplyLocalFilter();
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -174,31 +198,43 @@ public partial class NotesViewModel : ViewModelBase
         IsLoading = true;
         ErrorMessage = null;
 
-        var result = await _apiClient.GetNoteByIdAsync(_userSession.SelectedWorkspace.Id, summary.Id);
-        IsLoading = false;
-
-        if (result.IsSuccess)
+        try
         {
-            SelectedNote = result.Value;
-            HasSelectedNote = true;
+            var result = await _apiClient.GetNoteByIdAsync(_userSession.SelectedWorkspace.Id, summary.Id);
 
-            CurrentNoteId = result.Value.Id;
-            CurrentNoteTitle = result.Value.Title;
-            CurrentNoteContent = result.Value.Content;
-            CurrentNoteContentType = result.Value.ContentType;
-            CurrentNoteIsPinned = result.Value.IsPinned;
-            CurrentNotePageId = result.Value.PageId;
-            CurrentNoteTags = string.Join(", ", result.Value.Tags);
+            if (result.IsSuccess)
+            {
+                SelectedNote = result.Value;
+                HasSelectedNote = true;
+
+                CurrentNoteId = result.Value.Id;
+                CurrentNoteTitle = result.Value.Title;
+                CurrentNoteContent = result.Value.Content;
+                CurrentNoteContentType = result.Value.ContentType;
+                CurrentNoteIsPinned = result.Value.IsPinned;
+                CurrentNotePageId = result.Value.PageId;
+                CurrentNoteTags = string.Join(", ", result.Value.Tags);
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
     [RelayCommand]
     public void NewNote()
     {
+        if (IsBusy) return;
+
         SelectedNoteSummary = null;
         SelectedNote = null;
         HasSelectedNote = true;
@@ -218,7 +254,7 @@ public partial class NotesViewModel : ViewModelBase
     [RelayCommand]
     public async Task SaveNoteAsync()
     {
-        if (_userSession.SelectedWorkspace == null) return;
+        if (_userSession.SelectedWorkspace == null || IsBusy) return;
 
         if (string.IsNullOrWhiteSpace(CurrentNoteTitle))
         {
@@ -236,95 +272,197 @@ public partial class NotesViewModel : ViewModelBase
 
         Guid? pageIdParam = CurrentNotePageId.HasValue && CurrentNotePageId.Value != Guid.Empty ? CurrentNotePageId.Value : null;
 
-        if (CurrentNoteId.HasValue)
+        try
         {
-            // Update existing note
-            var updateRequest = new UpdateNoteRequest(
-                CurrentNoteTitle.Trim(),
-                CurrentNoteContent ?? string.Empty,
-                CurrentNoteContentType,
-                CurrentNoteIsPinned,
-                pageIdParam,
-                tagsList);
-
-            var result = await _apiClient.UpdateNoteAsync(_userSession.SelectedWorkspace.Id, CurrentNoteId.Value, updateRequest);
-            IsSaving = false;
-
-            if (result.IsSuccess)
+            if (CurrentNoteId.HasValue)
             {
-                SelectedNote = result.Value;
-                await LoadNotesAsync();
-                StatusMessage = "Note saved successfully.";
+                // Update existing note
+                var updateRequest = new UpdateNoteRequest(
+                    CurrentNoteTitle.Trim(),
+                    CurrentNoteContent ?? string.Empty,
+                    CurrentNoteContentType,
+                    CurrentNoteIsPinned,
+                    pageIdParam,
+                    tagsList);
+
+                var result = await _apiClient.UpdateNoteAsync(_userSession.SelectedWorkspace.Id, CurrentNoteId.Value, updateRequest);
+
+                if (result.IsSuccess)
+                {
+                    SelectedNote = result.Value;
+                    CurrentNoteId = result.Value.Id;
+                    CurrentNoteTitle = result.Value.Title;
+                    CurrentNoteContent = result.Value.Content;
+                    CurrentNoteContentType = result.Value.ContentType;
+                    CurrentNoteIsPinned = result.Value.IsPinned;
+                    CurrentNotePageId = result.Value.PageId;
+                    CurrentNoteTags = string.Join(", ", result.Value.Tags);
+
+                    await LoadNotesAsync();
+
+                    // Re-sync SelectedNoteSummary with refreshed collection
+                    SelectedNoteSummary = Notes.FirstOrDefault(n => n.Id == result.Value.Id);
+                    HasSelectedNote = true;
+                    StatusMessage = "Note saved successfully.";
+                }
+                else
+                {
+                    ErrorMessage = result.Error.Description;
+                }
             }
             else
             {
-                ErrorMessage = result.Error.Description;
+                // Create new note
+                var createRequest = new CreateNoteRequest(
+                    CurrentNoteTitle.Trim(),
+                    CurrentNoteContent ?? string.Empty,
+                    CurrentNoteContentType,
+                    CurrentNoteIsPinned,
+                    pageIdParam,
+                    tagsList);
+
+                var result = await _apiClient.CreateNoteAsync(_userSession.SelectedWorkspace.Id, createRequest);
+
+                if (result.IsSuccess)
+                {
+                    SelectedNote = result.Value;
+                    CurrentNoteId = result.Value.Id;
+                    CurrentNoteTitle = result.Value.Title;
+                    CurrentNoteContent = result.Value.Content;
+                    CurrentNoteContentType = result.Value.ContentType;
+                    CurrentNoteIsPinned = result.Value.IsPinned;
+                    CurrentNotePageId = result.Value.PageId;
+                    CurrentNoteTags = string.Join(", ", result.Value.Tags);
+
+                    await LoadNotesAsync();
+
+                    // Re-sync SelectedNoteSummary with refreshed collection
+                    SelectedNoteSummary = Notes.FirstOrDefault(n => n.Id == result.Value.Id);
+                    HasSelectedNote = true;
+                    StatusMessage = "Note created successfully.";
+                }
+                else
+                {
+                    ErrorMessage = result.Error.Description;
+                }
             }
         }
-        else
+        catch (Exception ex)
         {
-            // Create new note
-            var createRequest = new CreateNoteRequest(
-                CurrentNoteTitle.Trim(),
-                CurrentNoteContent ?? string.Empty,
-                CurrentNoteContentType,
-                CurrentNoteIsPinned,
-                pageIdParam,
-                tagsList);
-
-            var result = await _apiClient.CreateNoteAsync(_userSession.SelectedWorkspace.Id, createRequest);
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
             IsSaving = false;
-
-            if (result.IsSuccess)
-            {
-                CurrentNoteId = result.Value.Id;
-                SelectedNote = result.Value;
-                await LoadNotesAsync();
-                await SelectNoteByIdAsync(result.Value.Id);
-                StatusMessage = "Note created successfully.";
-            }
-            else
-            {
-                ErrorMessage = result.Error.Description;
-            }
         }
     }
 
     [RelayCommand]
     public async Task TogglePinAsync()
     {
-        CurrentNoteIsPinned = !CurrentNoteIsPinned;
-        if (CurrentNoteId.HasValue)
+        if (_userSession.SelectedWorkspace == null || IsBusy) return;
+
+        if (!CurrentNoteId.HasValue)
         {
-            await SaveNoteAsync();
+            // Draft note: toggle local UI flag only
+            CurrentNoteIsPinned = !CurrentNoteIsPinned;
+            return;
+        }
+
+        bool previousState = CurrentNoteIsPinned;
+        bool targetState = !previousState;
+        CurrentNoteIsPinned = targetState;
+
+        IsSaving = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        var tagsList = string.IsNullOrWhiteSpace(CurrentNoteTags)
+            ? new List<string>()
+            : CurrentNoteTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+        Guid? pageIdParam = CurrentNotePageId.HasValue && CurrentNotePageId.Value != Guid.Empty ? CurrentNotePageId.Value : null;
+
+        try
+        {
+            var updateRequest = new UpdateNoteRequest(
+                CurrentNoteTitle.Trim(),
+                CurrentNoteContent ?? string.Empty,
+                CurrentNoteContentType,
+                targetState,
+                pageIdParam,
+                tagsList);
+
+            var result = await _apiClient.UpdateNoteAsync(_userSession.SelectedWorkspace.Id, CurrentNoteId.Value, updateRequest);
+
+            if (result.IsSuccess)
+            {
+                SelectedNote = result.Value;
+                CurrentNoteIsPinned = result.Value.IsPinned;
+                await LoadNotesAsync();
+                SelectedNoteSummary = Notes.FirstOrDefault(n => n.Id == result.Value.Id);
+                StatusMessage = result.Value.IsPinned ? "Note pinned." : "Note unpinned.";
+            }
+            else
+            {
+                // Rollback on failure
+                CurrentNoteIsPinned = previousState;
+                ErrorMessage = result.Error.Description;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Rollback on exception
+            CurrentNoteIsPinned = previousState;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsSaving = false;
         }
     }
 
     [RelayCommand]
     public async Task DeleteNoteAsync()
     {
-        if (_userSession.SelectedWorkspace == null || !CurrentNoteId.HasValue) return;
+        if (_userSession.SelectedWorkspace == null || !CurrentNoteId.HasValue || IsBusy) return;
+
+        bool confirmed = await _dialogService.ConfirmAsync(
+            "Delete Note",
+            $"Are you sure you want to delete note '{CurrentNoteTitle}'?");
+
+        if (!confirmed) return;
 
         IsDeleting = true;
         ErrorMessage = null;
         StatusMessage = null;
 
-        var noteTitle = CurrentNoteTitle;
-        var result = await _apiClient.DeleteNoteAsync(_userSession.SelectedWorkspace.Id, CurrentNoteId.Value);
-        IsDeleting = false;
+        try
+        {
+            var noteTitle = CurrentNoteTitle;
+            var result = await _apiClient.DeleteNoteAsync(_userSession.SelectedWorkspace.Id, CurrentNoteId.Value);
 
-        if (result.IsSuccess)
-        {
-            CurrentNoteId = null;
-            SelectedNote = null;
-            SelectedNoteSummary = null;
-            HasSelectedNote = false;
-            await LoadNotesAsync();
-            StatusMessage = $"Note '{noteTitle}' was deleted.";
+            if (result.IsSuccess)
+            {
+                CurrentNoteId = null;
+                SelectedNote = null;
+                SelectedNoteSummary = null;
+                HasSelectedNote = false;
+                await LoadNotesAsync();
+                StatusMessage = $"Note '{noteTitle}' was deleted.";
+            }
+            else
+            {
+                ErrorMessage = result.Error.Description;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ErrorMessage = result.Error.Description;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsDeleting = false;
         }
     }
 
@@ -332,20 +470,25 @@ public partial class NotesViewModel : ViewModelBase
     public void ApplyLocalFilter()
     {
         FilteredNotes.Clear();
-        var query = Notes.AsEnumerable();
 
-        if (!string.IsNullOrWhiteSpace(SearchText))
+        if (string.IsNullOrWhiteSpace(SearchText))
         {
-            var term = SearchText.Trim().ToLowerInvariant();
-            query = query.Where(n =>
-                n.Title.ToLowerInvariant().Contains(term) ||
-                n.ContentSnippet.ToLowerInvariant().Contains(term) ||
-                n.Tags.Any(t => t.ToLowerInvariant().Contains(term)));
+            foreach (var note in Notes)
+            {
+                FilteredNotes.Add(note);
+            }
+            return;
         }
 
-        foreach (var note in query)
+        var term = SearchText.Trim();
+        foreach (var note in Notes)
         {
-            FilteredNotes.Add(note);
+            if (note.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                note.ContentSnippet.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                note.Tags.Any(t => t.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            {
+                FilteredNotes.Add(note);
+            }
         }
     }
 
@@ -362,14 +505,5 @@ public partial class NotesViewModel : ViewModelBase
     partial void OnSelectedPageFilterIdChanged(Guid? value)
     {
         _ = LoadNotesAsync();
-    }
-
-    private async Task SelectNoteByIdAsync(Guid noteId)
-    {
-        var summary = Notes.FirstOrDefault(n => n.Id == noteId);
-        if (summary != null)
-        {
-            await SelectNoteAsync(summary);
-        }
     }
 }

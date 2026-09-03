@@ -481,3 +481,4 @@ D:\Me\Project-Idea\NEXUS\tests\Nexus.API.Tests\obj\Debug\net10.0\refint\Nexus.AP
 D:\Me\Project-Idea\NEXUS\tests\Nexus.API.Tests\obj\Debug\net10.0\Nexus.API.Tests.pdb
 D:\Me\Project-Idea\NEXUS\tests\Nexus.API.Tests\obj\Debug\net10.0\Nexus.API.Tests.genruntimeconfig.cache
 D:\Me\Project-Idea\NEXUS\tests\Nexus.API.Tests\obj\Debug\net10.0\ref\Nexus.API.Tests.dll
+D:\Me\Project-Idea\NEXUS\tests\Nexus.API.Tests\obj\Debug\net10.0\Nexus.API.Tests.sourcelink.json
