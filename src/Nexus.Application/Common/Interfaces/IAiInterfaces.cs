@@ -42,7 +42,7 @@ public interface IAiStudyService
     Task<IReadOnlyList<GeneratedFlashcard>> GenerateFlashcardsAsync(string contextText, string topic, int cardCount = 5, CancellationToken cancellationToken = default);
 }
 
-public interface ISearchService
+public interface IHybridSearchService
 {
     Task<SearchResponse> HybridSearchAsync(SearchRequest request, CancellationToken cancellationToken = default);
 }

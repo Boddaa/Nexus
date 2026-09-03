@@ -7,6 +7,7 @@ using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.Documents;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
+using Nexus.Application.DTOs.Search;
 using Nexus.Application.DTOs.Workspaces;
 using Nexus.Domain.Common;
 
@@ -45,6 +46,9 @@ public interface IApiClient
     Task<Result<DocumentDto>> UploadDocumentAsync(Guid workspaceId, Stream fileStream, string fileName, string contentType, string? title = null, Guid? pageId = null, CancellationToken cancellationToken = default);
     Task<Result> DeleteDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
     Task<Result<byte[]>> DownloadDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+
+    // Search
+    Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -602,6 +606,33 @@ public class ApiClient : IApiClient
         catch (Exception ex)
         {
             return Result.Failure<byte[]>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var query = Uri.EscapeDataString(request.Query ?? string.Empty);
+            var url = $"/api/workspaces/{workspaceId}/search?q={query}&page={request.Page}&pageSize={request.PageSize}";
+            if (!string.IsNullOrWhiteSpace(request.Type))
+            {
+                url += $"&type={Uri.EscapeDataString(request.Type)}";
+            }
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<PagedResult<SearchResultDto>>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<PagedResult<SearchResultDto>>(Error.NullValue);
+            }
+
+            return await ExtractErrorAsync<PagedResult<SearchResultDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<PagedResult<SearchResultDto>>(new Error("Search.NetworkError", ex.Message));
         }
     }
 

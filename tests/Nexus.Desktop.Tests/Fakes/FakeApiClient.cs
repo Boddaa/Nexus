@@ -2,6 +2,7 @@ using System.IO;
 using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
+using Nexus.Application.DTOs.Search;
 using Nexus.Application.DTOs.Workspaces;
 using Nexus.Desktop.Services;
 using Nexus.Domain.Common;
@@ -349,5 +350,23 @@ public class FakeApiClient : IApiClient
     {
         if (ShouldFail) return Task.FromResult(Result.Failure<byte[]>(FailureError));
         return Task.FromResult(Result.Success(new byte[] { 1, 2, 3, 4 }));
+    }
+
+    // Search
+    public List<SearchResultDto> SearchResults { get; set; } = new();
+
+    public Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<PagedResult<SearchResultDto>>(FailureError));
+
+        var query = SearchResults.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(request.Type) && !request.Type.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(r => r.Type.Equals(request.Type, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var items = query.ToList();
+        var paged = new PagedResult<SearchResultDto>(items, request.Page, request.PageSize, items.Count);
+        return Task.FromResult(Result.Success(paged));
     }
 }

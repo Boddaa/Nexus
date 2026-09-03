@@ -99,19 +99,6 @@ public partial class StudyViewModel : ViewModelBase
     }
 }
 
-public partial class SearchViewModel : ViewModelBase
-{
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _searchQuery = string.Empty;
-
-    public SearchViewModel(UserSession userSession)
-    {
-        _userSession = userSession;
-    }
-}
-
 public partial class AiAssistantViewModel : ViewModelBase
 {
     private readonly UserSession _userSession;

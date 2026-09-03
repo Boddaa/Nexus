@@ -26,6 +26,7 @@ public class NavigationAndViewModelTests
         services.AddTransient<PagesViewModel>();
         services.AddTransient<NotesViewModel>();
         services.AddTransient<DocumentsViewModel>();
+        services.AddTransient<SearchViewModel>();
 
         var provider = services.BuildServiceProvider();
         var navService = provider.GetRequiredService<INavigationService>();
@@ -63,6 +64,14 @@ public class NavigationAndViewModelTests
         // Assert 4
         Assert.True(eventFired);
         Assert.IsType<DocumentsViewModel>(navService.CurrentViewModel);
+
+        // Act 5 - Search
+        eventFired = false;
+        navService.NavigateTo<SearchViewModel>();
+
+        // Assert 5
+        Assert.True(eventFired);
+        Assert.IsType<SearchViewModel>(navService.CurrentViewModel);
     }
 
     [Fact]

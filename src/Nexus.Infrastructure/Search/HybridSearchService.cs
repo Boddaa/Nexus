@@ -4,7 +4,7 @@ using Nexus.Application.Common.Models;
 
 namespace Nexus.Infrastructure.Search;
 
-public class HybridSearchService : ISearchService
+public class HybridSearchService : IHybridSearchService
 {
     private readonly IAppDbContext _context;
     private readonly IEmbeddingService _embeddingService;

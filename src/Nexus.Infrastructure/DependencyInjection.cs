@@ -62,7 +62,7 @@ public static class DependencyInjection
         services.AddScoped<IAiStudyService, MockAiStudyService>();
 
         // Search
-        services.AddScoped<ISearchService, HybridSearchService>();
+        services.AddScoped<IHybridSearchService, HybridSearchService>();
 
         return services;
     }
