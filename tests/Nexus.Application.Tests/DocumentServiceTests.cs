@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ using Nexus.Domain.Entities;
 using Nexus.Domain.Enums;
 using Nexus.Infrastructure.Parsing;
 using Nexus.Infrastructure.Persistence;
+using UglyToad.PdfPig.Writer;
 using Xunit;
 
 namespace Nexus.Application.Tests;
@@ -79,7 +81,8 @@ public class DocumentServiceTests
         var result = await extractor.ExtractTextAsync(stream);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("Hello plain text document", result.Value);
+        Assert.Equal("Hello plain text document", result.Value.ExtractedText);
+        Assert.Null(result.Value.PageCount);
     }
 
     [Fact]
@@ -92,7 +95,8 @@ public class DocumentServiceTests
         var result = await extractor.ExtractTextAsync(stream);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("# Header 1\n\n- Item 1\n- Item 2", result.Value);
+        Assert.Equal("# Header 1\n\n- Item 1\n- Item 2", result.Value.ExtractedText);
+        Assert.Null(result.Value.PageCount);
     }
 
     [Fact]
@@ -105,18 +109,41 @@ public class DocumentServiceTests
         var result = await extractor.ExtractTextAsync(docxStream);
 
         Assert.True(result.IsSuccess);
-        Assert.Contains("First Paragraph Text", result.Value);
-        Assert.Contains("Second Paragraph Text", result.Value);
+        Assert.Contains("First Paragraph Text", result.Value.ExtractedText);
+        Assert.Contains("Second Paragraph Text", result.Value.ExtractedText);
+        Assert.Null(result.Value.PageCount);
+    }
+
+    [Fact]
+    public async Task PdfDocumentExtractor_Should_Extract_Actual_PageCount_For_Multiple_Pages()
+    {
+        var extractor = new PdfDocumentExtractor();
+        Assert.True(extractor.CanHandle(".pdf", "application/pdf"));
+
+        // Build a 3-page PDF document
+        var builder = new PdfDocumentBuilder();
+        builder.AddPage(595, 842);
+        builder.AddPage(595, 842);
+        builder.AddPage(595, 842);
+        var pdfBytes = builder.Build();
+
+        using var stream = new MemoryStream(pdfBytes);
+        var result = await extractor.ExtractTextAsync(stream);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value.PageCount);
     }
 
     #endregion
 
-    #region Upload Tests
+    #region Upload & Checksum & PageCount Tests
 
     [Fact]
-    public async Task UploadAsync_Valid_Txt_Should_Store_File_And_Persist_Metadata()
+    public async Task UploadAsync_Valid_Txt_Should_Have_Zero_PageCount_And_Valid_Checksum()
     {
         var content = "This is a test note content.";
+        var expectedHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         var request = new UploadDocumentStreamRequest(stream, "notes.txt", "text/plain", stream.Length, "My Notes", _testPage.Id);
 
@@ -126,17 +153,75 @@ public class DocumentServiceTests
         Assert.Equal("notes.txt", result.Value.FileName);
         Assert.Equal("My Notes", result.Value.Title);
         Assert.Equal(_testPage.Id, result.Value.PageId);
-        Assert.Equal("Architecture Spec", result.Value.PageTitle);
-        Assert.Equal(DocumentStatus.Processed, result.Value.Status);
-        Assert.Equal(content.Length, result.Value.ExtractedTextLength);
+        Assert.Equal(0, result.Value.PageCount); // TXT must have 0 page count, not fake 1
 
-        // Verify storage has the file
-        Assert.Single(_fakeFileStorage.Files);
-
-        // Verify database has entity
+        // Verify database entity has computed checksum
         var dbDoc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == result.Value.Id);
         Assert.NotNull(dbDoc);
-        Assert.Equal(content, dbDoc!.ExtractedText);
+        Assert.Equal(expectedHash, dbDoc!.Checksum);
+        Assert.Equal(0, dbDoc.PageCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_Pdf_With_Multiple_Pages_Should_Set_Actual_PageCount()
+    {
+        // Build a 4-page PDF
+        var builder = new PdfDocumentBuilder();
+        builder.AddPage(595, 842);
+        builder.AddPage(595, 842);
+        builder.AddPage(595, 842);
+        builder.AddPage(595, 842);
+        var pdfBytes = builder.Build();
+
+        using var stream = new MemoryStream(pdfBytes);
+        var request = new UploadDocumentStreamRequest(stream, "multipage.pdf", "application/pdf", stream.Length);
+
+        var result = await _documentService.UploadAsync(_testWorkspace.Id, request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, result.Value.PageCount);
+
+        var dbDoc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == result.Value.Id);
+        Assert.NotNull(dbDoc);
+        Assert.Equal(4, dbDoc!.PageCount);
+        Assert.False(string.IsNullOrEmpty(dbDoc.Checksum));
+    }
+
+    [Fact]
+    public async Task UploadAsync_Same_File_Should_Yield_Identical_Checksum()
+    {
+        var content = "Identical content for checksum verification";
+        using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var req1 = new UploadDocumentStreamRequest(stream1, "file1.txt", "text/plain", stream1.Length);
+        var req2 = new UploadDocumentStreamRequest(stream2, "file2.txt", "text/plain", stream2.Length);
+
+        var res1 = await _documentService.UploadAsync(_testWorkspace.Id, req1);
+        var res2 = await _documentService.UploadAsync(_testWorkspace.Id, req2);
+
+        var doc1 = await _context.Documents.FindAsync(res1.Value.Id);
+        var doc2 = await _context.Documents.FindAsync(res2.Value.Id);
+
+        Assert.Equal(doc1!.Checksum, doc2!.Checksum);
+    }
+
+    [Fact]
+    public async Task UploadAsync_Different_File_Should_Yield_Different_Checksum()
+    {
+        using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes("Alpha"));
+        using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes("Beta"));
+
+        var req1 = new UploadDocumentStreamRequest(stream1, "alpha.txt", "text/plain", stream1.Length);
+        var req2 = new UploadDocumentStreamRequest(stream2, "beta.txt", "text/plain", stream2.Length);
+
+        var res1 = await _documentService.UploadAsync(_testWorkspace.Id, req1);
+        var res2 = await _documentService.UploadAsync(_testWorkspace.Id, req2);
+
+        var doc1 = await _context.Documents.FindAsync(res1.Value.Id);
+        var doc2 = await _context.Documents.FindAsync(res2.Value.Id);
+
+        Assert.NotEqual(doc1!.Checksum, doc2!.Checksum);
     }
 
     [Fact]
@@ -151,6 +236,7 @@ public class DocumentServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal("guide.md", result.Value.FileName);
         Assert.Equal(DocumentStatus.Processed, result.Value.Status);
+        Assert.Equal(0, result.Value.PageCount);
     }
 
     [Fact]
@@ -353,9 +439,9 @@ public class DocumentServiceTests
     {
         public bool CanHandle(string extension, string contentType) => true;
 
-        public Task<Result<string>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
+        public Task<Result<DocumentExtractionResult>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Result.Failure<string>(new Error("Extraction.Failed", "Simulated extraction crash.")));
+            return Task.FromResult(Result.Failure<DocumentExtractionResult>(new Error("Extraction.Failed", "Simulated extraction crash.")));
         }
     }
 
@@ -382,7 +468,8 @@ public class DocumentServiceTests
             var key = storagePath.Replace('\\', '/');
             if (Files.TryGetValue(key, out var bytes))
             {
-                return Task.FromResult<Stream>(new MemoryStream(bytes));
+                var ms = new MemoryStream(bytes);
+                return Task.FromResult<Stream>(ms);
             }
             throw new FileNotFoundException();
         }

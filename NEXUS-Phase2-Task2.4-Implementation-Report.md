@@ -316,7 +316,50 @@ Total: 92 Passed, 0 Failed, 0 Skipped (100% Pass Rate across all 10 projects)
 
 ---
 
+---
+
 ## 15. Final Status & Recommended Next Task
 
 - **Task 2.4 Status**: **COMPLETE & APPROVED FOR MERGE.**
 - **Recommended Next Task**: **Task 2.5 — Knowledge Search v1** (Lexical search across Pages, Notes, and Parsed Documents).
+
+---
+
+## 16. Post-Review Fixes
+
+### PDF Page Count
+- **Issue**: `DocumentService` previously evaluated `PageCount` as a binary flag (`extension.Equals(".pdf") ? 1 : 0`), leading to hard-coded `1` for any PDF regardless of length.
+- **Fix**: Introduced `DocumentExtractionResult(string ExtractedText, int? PageCount = null)`.
+  - `PdfDocumentExtractor` inspects `PdfPig`'s `pdf.NumberOfPages` to return the actual count of pages.
+  - `PlainTextDocumentExtractor`, `MarkdownDocumentExtractor`, and `DocxDocumentExtractor` return `PageCount = null`.
+  - `DocumentService` sets `PageCount = extractionResult.Value.PageCount ?? 0`.
+- **Verification**: Tests confirm single-page and multi-page PDFs populate exact page counts (e.g. 3, 4), while `.txt` and `.md` files default cleanly to `0`.
+
+### Checksum
+- **Decision & Implementation**: `Checksum` is an existing non-nullable column on the `Documents` table (`nvarchar(128)`). To avoid leaving a misleading empty string or dead column, SHA-256 calculation was implemented over the stored file stream via `SHA256.Create().ComputeHashAsync()`.
+- **Performance**: Streams file bytes without buffering the whole file in RAM; resets stream position before text extraction.
+- **Verification**:
+  - `UploadAsync_Same_File_Should_Yield_Identical_Checksum`
+  - `UploadAsync_Different_File_Should_Yield_Different_Checksum`
+  - Checksum is persisted to database on upload.
+
+### Storage Path Security
+- **Issue**: Storage previously performed `.Replace("..", string.Empty)` before resolution, which silently modified malicious paths rather than explicitly rejecting them.
+- **Fix**: Replaced string replacement with strict upfront validation and canonical resolution:
+  - Both relative path and subdirectory are checked for `..`, `:`, or rooted operators (`Path.IsPathRooted`).
+  - Canonical full path is verified to strictly reside within the configured storage root directory.
+  - Applies to all filesystem operations: `SaveFileAsync`, `GetFileStreamAsync`, `DeleteFileAsync`, and `FileExistsAsync`.
+- **Verification**: Comprehensive tests in `LocalFileStorageTests` verify rejection of:
+  - Traversal with forward slashes (`../../secret.txt`)
+  - Traversal with backslashes (`..\..\secret.txt`)
+  - Windows absolute drive paths (`C:\Windows\System32\...`)
+  - Unix root paths (`/etc/passwd`)
+  - Traversal in subdirectories (`SaveFileAsync(..., "../evil")`)
+  - Traversal in read, delete, and exists operations
+
+### Verification Summary
+- **Compilation**: `dotnet build Nexus.sln` ➔ `0 Warning(s), 0 Error(s)`.
+- **Test Suite**: `dotnet test Nexus.sln` ➔ `102 Passed, 0 Failed, 0 Skipped` (100% pass rate across all 10 projects).
+- **Migration**: Not required (schema already contained `Checksum` and `PageCount`).
+- **Working Tree**: Clean, zero untracked runtime artifacts or build outputs.
+

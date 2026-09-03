@@ -12,7 +12,7 @@ public class MarkdownDocumentExtractor : IDocumentTextExtractor
                contentType.Contains("text/markdown", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<Result<string>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
+    public async Task<Result<DocumentExtractionResult>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -25,11 +25,11 @@ public class MarkdownDocumentExtractor : IDocumentTextExtractor
 
             using var reader = new StreamReader(content, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
             var text = await reader.ReadToEndAsync(cancellationToken);
-            return Result.Success(text ?? string.Empty);
+            return Result.Success(new DocumentExtractionResult(text ?? string.Empty, null));
         }
         catch (Exception ex)
         {
-            return Result.Failure<string>(new Error("Document.MarkdownExtractionFailed", $"Failed to extract markdown text: {ex.Message}"));
+            return Result.Failure<DocumentExtractionResult>(new Error("Document.MarkdownExtractionFailed", $"Failed to extract markdown text: {ex.Message}"));
         }
     }
 }

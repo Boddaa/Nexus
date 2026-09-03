@@ -32,14 +32,20 @@ public class LocalFileStorage : IFileStorage
     {
         ArgumentNullException.ThrowIfNull(fileStream);
 
+        if (!string.IsNullOrWhiteSpace(subDirectory))
+        {
+            if (subDirectory.Contains("..") ||
+                subDirectory.Contains(':') ||
+                Path.IsPathRooted(subDirectory))
+            {
+                throw new UnauthorizedAccessException($"Path traversal attempt detected in subDirectory: '{subDirectory}'.");
+            }
+        }
+
         var safeExtension = Path.GetExtension(fileName);
         var uniqueFileName = $"{Guid.NewGuid():N}{safeExtension}";
 
-        // Normalize subDirectory to prevent path traversal in subDirectory
-        var cleanSubDir = (subDirectory ?? string.Empty)
-            .Replace("..", string.Empty)
-            .Trim('/', '\\');
-
+        var cleanSubDir = (subDirectory ?? string.Empty).Trim('/', '\\');
         var relativePath = Path.Combine(cleanSubDir, uniqueFileName);
         var fullPath = GetSafeFullPath(relativePath);
 
@@ -93,13 +99,24 @@ public class LocalFileStorage : IFileStorage
             throw new ArgumentException("Storage path cannot be empty.", nameof(relativePath));
         }
 
+        // 1. Explicitly reject traversal tokens, drive specs, or rooted paths
+        if (relativePath.Contains("..") ||
+            relativePath.Contains(':') ||
+            Path.IsPathRooted(relativePath))
+        {
+            throw new UnauthorizedAccessException($"Path traversal attempt detected: '{relativePath}' is rooted or contains traversal operators.");
+        }
+
+        // 2. Normalize directory separators
         var normalizedRelative = relativePath
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar)
             .TrimStart(Path.DirectorySeparatorChar);
 
+        // 3. Resolve absolute canonical path
         var fullPath = Path.GetFullPath(Path.Combine(_baseStoragePath, normalizedRelative));
 
+        // 4. Verify resolved path stays strictly inside configured base storage root
         var baseWithSeparator = _baseStoragePath.EndsWith(Path.DirectorySeparatorChar)
             ? _baseStoragePath
             : _baseStoragePath + Path.DirectorySeparatorChar;

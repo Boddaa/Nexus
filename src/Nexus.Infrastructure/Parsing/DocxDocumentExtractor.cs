@@ -15,7 +15,7 @@ public class DocxDocumentExtractor : IDocumentTextExtractor
                contentType.Contains("wordprocessingml", StringComparison.OrdinalIgnoreCase);
     }
 
-    public Task<Result<string>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
+    public Task<Result<DocumentExtractionResult>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -31,7 +31,7 @@ public class DocxDocumentExtractor : IDocumentTextExtractor
 
             if (documentEntry == null)
             {
-                return Task.FromResult(Result.Failure<string>(new Error("Document.InvalidDocx", "The DOCX file is missing word/document.xml.")));
+                return Task.FromResult(Result.Failure<DocumentExtractionResult>(new Error("Document.InvalidDocx", "The DOCX file is missing word/document.xml.")));
             }
 
             using var entryStream = documentEntry.Open();
@@ -48,11 +48,11 @@ public class DocxDocumentExtractor : IDocumentTextExtractor
             }
 
             var fullText = string.Join("\n\n", paragraphs);
-            return Task.FromResult(Result.Success(fullText));
+            return Task.FromResult(Result.Success(new DocumentExtractionResult(fullText, null)));
         }
         catch (Exception ex)
         {
-            return Task.FromResult(Result.Failure<string>(new Error("Document.DocxExtractionFailed", $"Failed to extract DOCX text: {ex.Message}")));
+            return Task.FromResult(Result.Failure<DocumentExtractionResult>(new Error("Document.DocxExtractionFailed", $"Failed to extract DOCX text: {ex.Message}")));
         }
     }
 }

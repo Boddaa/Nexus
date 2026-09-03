@@ -11,10 +11,14 @@ public interface IFileStorage
     Task<bool> FileExistsAsync(string storagePath, CancellationToken cancellationToken = default);
 }
 
+public record DocumentExtractionResult(
+    string ExtractedText,
+    int? PageCount = null);
+
 public interface IDocumentTextExtractor
 {
     bool CanHandle(string extension, string contentType);
-    Task<Result<string>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default);
+    Task<Result<DocumentExtractionResult>> ExtractTextAsync(Stream content, CancellationToken cancellationToken = default);
 }
 
 public interface ITextExtractor

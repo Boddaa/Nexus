@@ -116,8 +116,21 @@ public class DocumentService : IDocumentService
                 return Result.Failure<DocumentDto>(new Error("Documents.NoExtractorFound", $"No text extractor available for '{extension}'."));
             }
 
-            // 7. Extract text safely
+            // 7. Calculate SHA-256 Checksum and extract text safely
             await using var extractionStream = await _fileStorage.GetFileStreamAsync(savedStoragePath, cancellationToken);
+
+            string checksum;
+            using (var sha256 = SHA256.Create())
+            {
+                var hashBytes = await sha256.ComputeHashAsync(extractionStream, cancellationToken);
+                checksum = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            if (extractionStream.CanSeek)
+            {
+                extractionStream.Position = 0;
+            }
+
             var extractionResult = await extractor.ExtractTextAsync(extractionStream, cancellationToken);
 
             if (!extractionResult.IsSuccess)
@@ -127,7 +140,8 @@ public class DocumentService : IDocumentService
                 return Result.Failure<DocumentDto>(extractionResult.Error);
             }
 
-            var extractedText = extractionResult.Value;
+            var extractedText = extractionResult.Value.ExtractedText;
+            var pageCount = extractionResult.Value.PageCount ?? 0;
 
             // 8. Create Document entity
             var document = new Document(documentId)
@@ -141,8 +155,8 @@ public class DocumentService : IDocumentService
                 StoragePath = savedStoragePath,
                 Status = DocumentStatus.Processed,
                 ExtractedText = extractedText,
-                PageCount = extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
-                Checksum = string.Empty,
+                PageCount = pageCount,
+                Checksum = checksum,
                 CreatedAtUtc = DateTime.UtcNow
             };
 

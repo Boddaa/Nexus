@@ -26,7 +26,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveFileAsync_And_GetFileStreamAsync_Should_Work_Correctly()
+    public async Task Normal_Relative_Path_Should_Succeed()
     {
         // Arrange
         var content = "Storage test payload";
@@ -46,6 +46,16 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
+    public async Task Nested_Valid_Path_Should_Succeed()
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Nested content"));
+        var relativePath = await _storage.SaveFileAsync(stream, "level1/level2/level3", "nested.txt", "text/plain");
+
+        Assert.NotNull(relativePath);
+        Assert.True(await _storage.FileExistsAsync(relativePath));
+    }
+
+    [Fact]
     public async Task DeleteFileAsync_Should_Remove_File()
     {
         // Arrange
@@ -61,18 +71,61 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public void Path_Traversal_Attempt_Should_Throw_UnauthorizedAccessException()
+    public void Path_Traversal_Slash_Should_Be_Rejected()
     {
-        // Relative escaping path
         Assert.Throws<UnauthorizedAccessException>(() =>
-            _storage.GetSafeFullPath("../../windows/system32/cmd.exe"));
+            _storage.GetSafeFullPath("../../secret.txt"));
 
         Assert.Throws<UnauthorizedAccessException>(() =>
-            _storage.GetSafeFullPath(@"..\..\..\secret.txt"));
+            _storage.GetSafeFullPath("folder/../../secret.txt"));
+    }
 
-        // Direct slash attempts
+    [Fact]
+    public void Path_Traversal_Backslash_Should_Be_Rejected()
+    {
         Assert.Throws<UnauthorizedAccessException>(() =>
-            _storage.GetSafeFullPath("folder/../../../secret.txt"));
+            _storage.GetSafeFullPath(@"..\..\secret.txt"));
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            _storage.GetSafeFullPath(@"folder\..\..\secret.txt"));
+    }
+
+    [Fact]
+    public void Absolute_Windows_Path_Should_Be_Rejected()
+    {
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            _storage.GetSafeFullPath(@"C:\Windows\System32\cmd.exe"));
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            _storage.GetSafeFullPath(@"D:\sensitive\data.txt"));
+    }
+
+    [Fact]
+    public void Root_Escape_Attempt_Should_Be_Rejected()
+    {
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            _storage.GetSafeFullPath("/etc/passwd"));
+    }
+
+    [Fact]
+    public async Task SaveFileAsync_With_Traversal_SubDirectory_Should_Throw()
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("evil"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _storage.SaveFileAsync(stream, "../evil_dir", "hack.txt", "text/plain"));
+    }
+
+    [Fact]
+    public async Task Operations_With_Traversal_Should_Throw()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _storage.GetFileStreamAsync("../../secret.txt"));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _storage.DeleteFileAsync("../../secret.txt"));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _storage.FileExistsAsync("../../secret.txt"));
     }
 
     public void Dispose()
