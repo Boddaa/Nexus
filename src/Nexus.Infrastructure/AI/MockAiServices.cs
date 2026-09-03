@@ -15,31 +15,6 @@ public class MockChatService : IChatService
     }
 }
 
-public class MockEmbeddingService : IEmbeddingService
-{
-    public int EmbeddingDimension => 1536;
-
-    public Task<ReadOnlyMemory<float>> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
-    {
-        var random = new Random(text.GetHashCode());
-        var vector = new float[EmbeddingDimension];
-        for (int i = 0; i < EmbeddingDimension; i++)
-        {
-            vector[i] = (float)random.NextDouble();
-        }
-        return Task.FromResult<ReadOnlyMemory<float>>(vector);
-    }
-
-    public async Task<IReadOnlyList<ReadOnlyMemory<float>>> GenerateEmbeddingsAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default)
-    {
-        var list = new List<ReadOnlyMemory<float>>();
-        foreach (var text in texts)
-        {
-            list.Add(await GenerateEmbeddingAsync(text, cancellationToken));
-        }
-        return list;
-    }
-}
 
 public class InMemoryVectorStore : IVectorStore
 {

@@ -7,12 +7,6 @@ public interface IChatService
     Task<ChatResponse> GetChatCompletionAsync(ChatRequest request, CancellationToken cancellationToken = default);
 }
 
-public interface IEmbeddingService
-{
-    Task<ReadOnlyMemory<float>> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ReadOnlyMemory<float>>> GenerateEmbeddingsAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default);
-    int EmbeddingDimension { get; }
-}
 
 public interface IVectorStore
 {
