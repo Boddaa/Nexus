@@ -1,10 +1,14 @@
 using Nexus.Application.DTOs.Auth;
+using Nexus.Application.DTOs.Documents;
+using Nexus.Application.DTOs.Notes;
+using Nexus.Application.DTOs.Pages;
 using Nexus.Application.DTOs.Search;
 using Nexus.Application.DTOs.Workspaces;
 using Nexus.Desktop.Models;
 using Nexus.Desktop.Tests.Fakes;
 using Nexus.Desktop.ViewModels;
 using Nexus.Domain.Common;
+using Nexus.Domain.Enums;
 using Xunit;
 
 namespace Nexus.Desktop.Tests;
@@ -13,6 +17,8 @@ public class SearchViewModelTests
 {
     private readonly FakeApiClient _fakeApiClient;
     private readonly FakeNavigationService _fakeNavigationService;
+    private readonly FakeDialogService _fakeDialogService;
+    private readonly FakeFilePickerService _fakeFilePicker;
     private readonly UserSession _userSession;
     private readonly Guid _workspaceId = Guid.NewGuid();
 
@@ -20,6 +26,8 @@ public class SearchViewModelTests
     {
         _fakeApiClient = new FakeApiClient();
         _fakeNavigationService = new FakeNavigationService();
+        _fakeDialogService = new FakeDialogService();
+        _fakeFilePicker = new FakeFilePickerService();
         _userSession = new UserSession
         {
             CurrentUser = new AuthResponse(Guid.NewGuid(), "tester@nexus.ai", "Tester", "User", "fake-token", DateTime.UtcNow.AddDays(1)),
@@ -112,36 +120,75 @@ public class SearchViewModelTests
     }
 
     [Fact]
-    public void OpenResult_Page_Should_Navigate_To_PagesViewModel()
+    public async Task OpenResult_Page_Should_Navigate_And_Select_Page()
     {
+        // Arrange
+        var targetPageId = Guid.NewGuid();
+        var pageDto = new PageDto(targetPageId, _workspaceId, null, "Target Page", "📄", null, "{\"text\":\"Page Content\"}", 0, DateTime.UtcNow, null, 0, 0);
+        _fakeApiClient.Pages.Add(pageDto);
+
+        var pagesVm = new PagesViewModel(_fakeApiClient, _fakeDialogService, _userSession);
+        _fakeNavigationService.ViewModelResolver = type => type == typeof(PagesViewModel) ? pagesVm : null;
+
         var vm = new SearchViewModel(_fakeApiClient, _fakeNavigationService, _userSession);
-        var pageResult = new SearchResultDto(Guid.NewGuid(), "Page", _workspaceId, null, "Page Title", "Snippet", 100, DateTime.UtcNow, null);
+        var pageResult = new SearchResultDto(targetPageId, "Page", _workspaceId, null, "Target Page", "Snippet", 100, DateTime.UtcNow, null);
 
-        vm.OpenResult(pageResult);
+        // Act
+        await vm.OpenResult(pageResult);
 
+        // Assert
         Assert.Equal(typeof(PagesViewModel), _fakeNavigationService.LastNavigatedType);
+        Assert.NotNull(pagesVm.SelectedPage);
+        Assert.Equal(targetPageId, pagesVm.SelectedPage.Id);
+        Assert.Equal("Target Page", pagesVm.EditorTitle);
     }
 
     [Fact]
-    public void OpenResult_Note_Should_Navigate_To_NotesViewModel()
+    public async Task OpenResult_Note_Should_Navigate_And_Select_Note()
     {
+        // Arrange
+        var targetNoteId = Guid.NewGuid();
+        var noteDto = new NoteDto(targetNoteId, _workspaceId, null, null, "Target Note", "Note Content", "markdown", false, DateTime.UtcNow, null, new List<string> { "tag1" });
+        _fakeApiClient.Notes.Add(noteDto);
+
+        var notesVm = new NotesViewModel(_fakeApiClient, _fakeDialogService, _userSession);
+        _fakeNavigationService.ViewModelResolver = type => type == typeof(NotesViewModel) ? notesVm : null;
+
         var vm = new SearchViewModel(_fakeApiClient, _fakeNavigationService, _userSession);
-        var noteResult = new SearchResultDto(Guid.NewGuid(), "Note", _workspaceId, null, "Note Title", "Snippet", 100, DateTime.UtcNow, null);
+        var noteResult = new SearchResultDto(targetNoteId, "Note", _workspaceId, null, "Target Note", "Snippet", 100, DateTime.UtcNow, null);
 
-        vm.OpenResult(noteResult);
+        // Act
+        await vm.OpenResult(noteResult);
 
+        // Assert
         Assert.Equal(typeof(NotesViewModel), _fakeNavigationService.LastNavigatedType);
+        Assert.NotNull(notesVm.SelectedNote);
+        Assert.Equal(targetNoteId, notesVm.SelectedNote.Id);
+        Assert.Equal("Target Note", notesVm.CurrentNoteTitle);
     }
 
     [Fact]
-    public void OpenResult_Document_Should_Navigate_To_DocumentsViewModel()
+    public async Task OpenResult_Document_Should_Navigate_And_Select_Document()
     {
+        // Arrange
+        var targetDocId = Guid.NewGuid();
+        var docDetail = new DocumentDetailDto(targetDocId, _workspaceId, null, null, "Target Doc", "target.pdf", "application/pdf", ".pdf", 2048, DocumentStatus.Processed, null, "Sample extracted text", 1, 30, DateTime.UtcNow, null);
+        _fakeApiClient.DocumentDetails.Add(docDetail);
+
+        var docsVm = new DocumentsViewModel(_fakeApiClient, _fakeDialogService, _fakeFilePicker, _userSession);
+        _fakeNavigationService.ViewModelResolver = type => type == typeof(DocumentsViewModel) ? docsVm : null;
+
         var vm = new SearchViewModel(_fakeApiClient, _fakeNavigationService, _userSession);
-        var docResult = new SearchResultDto(Guid.NewGuid(), "Document", _workspaceId, null, "Doc Title", "Snippet", 100, DateTime.UtcNow, null);
+        var docResult = new SearchResultDto(targetDocId, "Document", _workspaceId, null, "Target Doc", "Snippet", 100, DateTime.UtcNow, null);
 
-        vm.OpenResult(docResult);
+        // Act
+        await vm.OpenResult(docResult);
 
+        // Assert
         Assert.Equal(typeof(DocumentsViewModel), _fakeNavigationService.LastNavigatedType);
+        Assert.NotNull(docsVm.SelectedDocument);
+        Assert.Equal(targetDocId, docsVm.SelectedDocument.Id);
+        Assert.Equal("Target Doc", docsVm.SelectedDocument.Title);
     }
 
     [Fact]

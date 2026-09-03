@@ -379,4 +379,27 @@ public partial class DocumentsViewModel : ViewModelBase
     {
         _ = LoadDocumentsAsync();
     }
+
+    public async Task SelectDocumentByIdAsync(Guid documentId)
+    {
+        if (Documents.Count == 0 && _userSession.SelectedWorkspace != null)
+        {
+            await LoadDocumentsAsync();
+        }
+
+        var summary = Documents.FirstOrDefault(d => d.Id == documentId);
+        if (summary != null)
+        {
+            await SelectDocumentAsync(summary);
+        }
+        else if (_userSession.SelectedWorkspace != null)
+        {
+            var result = await _apiClient.GetDocumentByIdAsync(_userSession.SelectedWorkspace.Id, documentId);
+            if (result.IsSuccess)
+            {
+                SelectedDocument = result.Value;
+                HasSelectedDocument = true;
+            }
+        }
+    }
 }

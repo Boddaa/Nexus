@@ -369,5 +369,41 @@ public class SearchServiceTests
         Assert.Empty(page1Ids.Intersect(page2Ids));
     }
 
+    [Fact]
+    public async Task SearchAsync_When_Zero_Matches_Should_Return_Empty_With_Zero_TotalCount()
+    {
+        var result = await _searchService.SearchAsync(_workspaceA.Id, new SearchRequest("NonExistentQueryXYZ123"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value.Items);
+        Assert.Equal(0, result.Value.TotalCount);
+        Assert.Equal(0, result.Value.TotalPages);
+    }
+
+    [Fact]
+    public async Task SearchAsync_Large_Document_Two_Stage_Snippet_Should_Materialize_Accurately()
+    {
+        // 50,000 chars of filler text with keyword deep inside
+        var largeText = new string('a', 15000) + " SpecializedQuantumConcept " + new string('b', 15000);
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Quantum Physics Manual",
+            FileName = "quantum.pdf",
+            ExtractedText = largeText,
+            Status = DocumentStatus.Processed
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        var result = await _searchService.SearchAsync(_workspaceA.Id, new SearchRequest("SpecializedQuantumConcept"));
+
+        Assert.True(result.IsSuccess);
+        var item = Assert.Single(result.Value.Items);
+        Assert.Equal("Document", item.Type);
+        Assert.Contains("SpecializedQuantumConcept", item.Snippet);
+        Assert.True(item.Snippet.Length < 300);
+    }
+
     #endregion
 }

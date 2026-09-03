@@ -12,7 +12,7 @@
 | **Frameworks** | .NET 10 (`net10.0`, `net10.0-windows`), ASP.NET Core, EF Core 10, WPF MVVM |
 | **Status** | **COMPLETE & FULLY VERIFIED** |
 | **Build Status** | `0 Warning(s)`, `0 Error(s)` |
-| **Full Solution Test Suite** | **130 Tests Passed** (0 Failed, 0 Skipped across 10 projects) |
+| **Full Solution Test Suite** | **132 Tests Passed** (0 Failed, 0 Skipped across 10 projects) |
 | **Database Migration** | Not required (uses existing schema and indexes) |
 | **Search Paradigm** | Pure SQL Server / EF Core Keyword & Substring Search |
 | **Searchable Sources** | Pages, Notes, Documents |
@@ -189,3 +189,34 @@ Total: 130 Passed, 0 Failed, 0 Skipped (100% Pass Rate across all 10 projects)
   - Task 2.3 — Pages & Notes WPF Desktop Integration ✅
   - Task 2.4 — Document Storage & Parsing ✅
   - Task 2.5 — Knowledge Search v1 ✅
+
+---
+
+## 12. Knowledge Search v1 — Final Fix Pass
+
+### 12.1 Fix 1 — Search Pagination & Database-Side Processing
+- **Problem**: `SearchService` was using `.Take(100)` per entity bucket and performing counting, sorting, and pagination entirely in memory.
+- **Solution**:
+  - Implemented database-side `CountAsync()` queries for each active entity type (`Pages`, `Notes`, `Documents`), executing `SELECT COUNT(*)` with DB-side predicates.
+  - Returns `totalCount = pageCount + noteCount + docCount`, providing exact database-level pagination counts.
+  - Implemented short-circuiting: If `totalCount == 0`, immediately returns an empty result set without executing candidate queries.
+  - Bounded candidate retrieval: Replaced fixed `.Take(100)` with dynamically bounded candidate windows `Take(Math.Max(pageSize, page * pageSize + 50))` ensuring queries never load unbounded rows into memory.
+
+### 12.2 Fix 2 — Avoid Loading Full Document `ExtractedText`
+- **Problem**: Document candidate queries were projecting full `d.ExtractedText` for all candidates, causing high memory usage for large PDF/DOCX documents (up to 50MB).
+- **Solution**:
+  - **Two-Stage Candidate Architecture**:
+    - **Stage 1 (Lightweight Candidate Query)**: Queries project ONLY `Id`, `PageId`, `Title`, `FileName`, and timestamps. Zero bytes of `ExtractedText`, `ContentJson`, or Note `Content` are transferred or loaded during candidate selection and ranking!
+    - **Stage 2 (Paginated Text Materialization)**: After in-memory relevance ranking applies `.Skip((page - 1) * pageSize).Take(pageSize)`, only the items on the active page (maximum `pageSize`, e.g. 20 items) have their content retrieved.
+    - **No N+1 Queries**: Single batch `IN` queries (`Where(d => pagedDocIds.Contains(d.Id))`) fetch text for snippet generation exclusively for the displayed items.
+
+### 12.3 Fix 3 — Search Result Navigation Opens the Exact Entity
+- **Problem**: `SearchViewModel.OpenResult` was navigating to the parent module without selecting the specific entity.
+- **Solution**:
+  - Added public selection methods to Desktop ViewModels:
+    - `PagesViewModel.SelectPageByIdAsync(Guid pageId)`: Loads the page tree if needed and selects the target page.
+    - `NotesViewModel.SelectNoteByIdAsync(Guid noteId)`: Loads workspace notes if needed and selects the target note.
+    - `DocumentsViewModel.SelectDocumentByIdAsync(Guid documentId)`: Loads documents and selects the target document.
+  - Updated `SearchViewModel.OpenResult`: After navigating via `_navigationService.NavigateTo<TViewModel>()`, casts `_navigationService.CurrentViewModel` and invokes the entity selection method, opening the exact Page, Note, or Document.
+  - Added unit tests in `SearchViewModelTests` verifying navigation and entity selection for all three types.
+

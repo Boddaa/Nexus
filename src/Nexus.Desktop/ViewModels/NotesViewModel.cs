@@ -506,4 +506,34 @@ public partial class NotesViewModel : ViewModelBase
     {
         _ = LoadNotesAsync();
     }
+
+    public async Task SelectNoteByIdAsync(Guid noteId)
+    {
+        if (Notes.Count == 0 && _userSession.SelectedWorkspace != null)
+        {
+            await LoadNotesAsync();
+        }
+
+        var summary = Notes.FirstOrDefault(n => n.Id == noteId);
+        if (summary != null)
+        {
+            await SelectNoteAsync(summary);
+        }
+        else if (_userSession.SelectedWorkspace != null)
+        {
+            var result = await _apiClient.GetNoteByIdAsync(_userSession.SelectedWorkspace.Id, noteId);
+            if (result.IsSuccess)
+            {
+                SelectedNote = result.Value;
+                HasSelectedNote = true;
+                CurrentNoteId = result.Value.Id;
+                CurrentNoteTitle = result.Value.Title;
+                CurrentNoteContent = result.Value.Content;
+                CurrentNoteContentType = result.Value.ContentType;
+                CurrentNoteIsPinned = result.Value.IsPinned;
+                CurrentNotePageId = result.Value.PageId;
+                CurrentNoteTags = string.Join(", ", result.Value.Tags);
+            }
+        }
+    }
 }

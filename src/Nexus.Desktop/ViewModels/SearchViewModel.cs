@@ -164,7 +164,7 @@ public partial class SearchViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void OpenResult(SearchResultDto? result)
+    public async Task OpenResult(SearchResultDto? result)
     {
         var target = result ?? SelectedResult;
         if (target == null) return;
@@ -172,14 +172,26 @@ public partial class SearchViewModel : ViewModelBase
         if (target.Type.Equals("Page", StringComparison.OrdinalIgnoreCase))
         {
             _navigationService.NavigateTo<PagesViewModel>();
+            if (_navigationService.CurrentViewModel is PagesViewModel pagesVm)
+            {
+                await pagesVm.SelectPageByIdAsync(target.Id);
+            }
         }
         else if (target.Type.Equals("Note", StringComparison.OrdinalIgnoreCase))
         {
             _navigationService.NavigateTo<NotesViewModel>();
+            if (_navigationService.CurrentViewModel is NotesViewModel notesVm)
+            {
+                await notesVm.SelectNoteByIdAsync(target.Id);
+            }
         }
         else if (target.Type.Equals("Document", StringComparison.OrdinalIgnoreCase))
         {
             _navigationService.NavigateTo<DocumentsViewModel>();
+            if (_navigationService.CurrentViewModel is DocumentsViewModel docsVm)
+            {
+                await docsVm.SelectDocumentByIdAsync(target.Id);
+            }
         }
     }
 }

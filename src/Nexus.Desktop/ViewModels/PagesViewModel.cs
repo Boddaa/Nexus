@@ -504,12 +504,33 @@ public partial class PagesViewModel : ViewModelBase
         return null;
     }
 
-    private async Task SelectPageByIdAsync(Guid pageId)
+    public async Task SelectPageByIdAsync(Guid pageId)
     {
+        if (PageTree.Count == 0 && _userSession.SelectedWorkspace != null)
+        {
+            await LoadPageTreeAsync();
+        }
+
         var targetNode = FindNode(PageTree, pageId);
         if (targetNode != null)
         {
             await SelectPageAsync(targetNode);
+        }
+        else if (_userSession.SelectedWorkspace != null)
+        {
+            var result = await _apiClient.GetPageByIdAsync(_userSession.SelectedWorkspace.Id, pageId);
+            if (result.IsSuccess)
+            {
+                SelectedPage = result.Value;
+                HasSelectedPage = true;
+                EditorTitle = result.Value.Title;
+                EditorIcon = result.Value.Icon;
+                EditorContentJson = result.Value.ContentJson;
+                EditorOrderIndex = result.Value.OrderIndex;
+                EditorCoverImageUrl = result.Value.CoverImageUrl;
+                ChildPagesCount = result.Value.ChildPagesCount;
+                NotesCount = result.Value.NotesCount;
+            }
         }
     }
 }
