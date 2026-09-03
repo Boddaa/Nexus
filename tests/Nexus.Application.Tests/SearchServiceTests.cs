@@ -27,7 +27,10 @@ public class SearchServiceTests
 
         _currentUserService = new TestCurrentUserService();
         _context = new AppDbContext(options, _currentUserService);
-        _searchService = new SearchService(_context, _currentUserService);
+        var hybridOptions = Microsoft.Extensions.Options.Options.Create(new Nexus.Application.Common.Options.HybridSearchOptions());
+        var vectorSearchService = new VectorSearchService(_context, _currentUserService, hybridOptions);
+        var fakeEmbedding = new FakeEmbeddingService();
+        _searchService = new SearchService(_context, _currentUserService, vectorSearchService, fakeEmbedding, hybridOptions);
 
         // Seed Users
         _testUser = new User { Email = "alice@nexus.ai", FullName = "Alice Architect" };
@@ -406,4 +409,21 @@ public class SearchServiceTests
     }
 
     #endregion
+
+    private class FakeEmbeddingService : Nexus.Application.Common.Interfaces.IEmbeddingService
+    {
+        public int EmbeddingDimension => 1536;
+
+        public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new float[1536]);
+        }
+
+        public Task<IReadOnlyList<float[]>> GenerateEmbeddingsAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default)
+        {
+            var list = new List<float[]>();
+            for (int i = 0; i < texts.Count; i++) list.Add(new float[1536]);
+            return Task.FromResult<IReadOnlyList<float[]>>(list);
+        }
+    }
 }

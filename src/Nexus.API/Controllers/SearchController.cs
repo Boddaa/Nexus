@@ -23,9 +23,11 @@ public class SearchController : ApiControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? type = null,
+        [FromQuery] string mode = "Keyword",
+        [FromQuery] int? topK = null,
         CancellationToken cancellationToken = default)
     {
-        var request = new SearchRequest(query ?? string.Empty, page, pageSize, type);
+        var request = new SearchRequest(query ?? string.Empty, page, pageSize, type, mode, topK);
         var result = await _searchService.SearchAsync(workspaceId, request, cancellationToken);
         return HandleResult(result);
     }

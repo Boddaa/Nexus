@@ -1,7 +1,10 @@
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Nexus.Application.Common.Exceptions;
 using Nexus.Application.Common.Interfaces;
+using Nexus.Application.Common.Options;
 using Nexus.Application.DTOs.Search;
 using Nexus.Domain.Common;
 using Nexus.Domain.Entities;
@@ -12,11 +15,22 @@ public class SearchService : ISearchService
 {
     private readonly IAppDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IVectorSearchService _vectorSearchService;
+    private readonly IEmbeddingService _embeddingService;
+    private readonly IOptions<HybridSearchOptions> _hybridOptions;
 
-    public SearchService(IAppDbContext context, ICurrentUserService currentUserService)
+    public SearchService(
+        IAppDbContext context,
+        ICurrentUserService currentUserService,
+        IVectorSearchService vectorSearchService,
+        IEmbeddingService embeddingService,
+        IOptions<HybridSearchOptions> hybridOptions)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _vectorSearchService = vectorSearchService;
+        _embeddingService = embeddingService;
+        _hybridOptions = hybridOptions;
     }
 
     public async Task<Result<PagedResult<SearchResultDto>>> SearchAsync(
@@ -62,7 +76,42 @@ public class SearchService : ISearchService
         var page = request.Page < 1 ? 1 : request.Page;
         var pageSize = request.PageSize < 1 ? 20 : (request.PageSize > 50 ? 50 : request.PageSize);
 
-        // 5. Validate Type filter
+        // 5. Validate Search Mode
+        var mode = string.IsNullOrWhiteSpace(request.Mode) ? "Keyword" : request.Mode.Trim();
+        if (!mode.Equals("Keyword", StringComparison.OrdinalIgnoreCase) &&
+            !mode.Equals("Semantic", StringComparison.OrdinalIgnoreCase) &&
+            !mode.Equals("Hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.Failure<PagedResult<SearchResultDto>>(
+                new Error("Search.InvalidMode", $"Invalid search mode '{mode}'. Allowed values: Keyword, Semantic, Hybrid."));
+        }
+
+        // 6. Dispatch according to Mode
+        if (mode.Equals("Semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteSemanticSearchAsync(workspaceId, trimmedQuery, page, pageSize, request, cancellationToken);
+        }
+
+        if (mode.Equals("Hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteHybridSearchAsync(workspaceId, trimmedQuery, page, pageSize, request, cancellationToken);
+        }
+
+        // Default: Keyword search
+        return await ExecuteKeywordSearchAsync(workspaceId, trimmedQuery, page, pageSize, request, cancellationToken);
+    }
+
+    #region Keyword Search (v1 Preserved)
+
+    private async Task<Result<PagedResult<SearchResultDto>>> ExecuteKeywordSearchAsync(
+        Guid workspaceId,
+        string trimmedQuery,
+        int page,
+        int pageSize,
+        SearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        // Validate Type filter
         var typeFilter = request.Type?.Trim();
         bool searchPages = true;
         bool searchNotes = true;
@@ -92,11 +141,10 @@ public class SearchService : ISearchService
             }
         }
 
-        // 6. Tokenize query
         var tokens = trimmedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var fullPattern = $"%{trimmedQuery}%";
 
-        // 7. Construct DB-side predicates
+        // Construct DB-side predicates
         Expression<Func<Page, bool>>? pagePredicate = null;
         if (searchPages)
         {
@@ -141,7 +189,7 @@ public class SearchService : ISearchService
             }
         }
 
-        // 8. Execute DB-Side CountAsync() for True Total Count (Fix 1)
+        // DB-Side CountAsync() for True Total Count
         int totalCount = 0;
         if (searchPages && pagePredicate != null)
         {
@@ -176,9 +224,7 @@ public class SearchService : ISearchService
                 Array.Empty<SearchResultDto>(), page, pageSize, 0));
         }
 
-        // 9. Stage 1: Bounded Lightweight Candidate Retrieval (Fix 1 & Fix 2)
-        // We only retrieve candidates up to the requested page window plus a small buffer.
-        // Crucially: ZERO bytes of Document.ExtractedText are loaded here!
+        // Stage 1: Bounded Lightweight Candidate Retrieval
         var candidateLimit = Math.Max(pageSize, page * pageSize + 50);
         var candidates = new List<SearchCandidate>();
 
@@ -188,29 +234,14 @@ public class SearchService : ISearchService
                 .AsNoTracking()
                 .Where(p => p.WorkspaceId == workspaceId && !p.IsDeleted)
                 .Where(pagePredicate)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.Title,
-                    p.CreatedAtUtc,
-                    p.UpdatedAtUtc
-                })
+                .Select(p => new { p.Id, p.Title, p.CreatedAtUtc, p.UpdatedAtUtc })
                 .Take(candidateLimit)
                 .ToListAsync(cancellationToken);
 
             foreach (var p in matchingPages)
             {
                 var score = CalculateScore(trimmedQuery, tokens, p.Title, null);
-                candidates.Add(new SearchCandidate(
-                    p.Id,
-                    "Page",
-                    workspaceId,
-                    null,
-                    p.Title,
-                    null,
-                    score == 0 ? 35 : score,
-                    p.CreatedAtUtc,
-                    p.UpdatedAtUtc));
+                candidates.Add(new SearchCandidate(p.Id, "Page", workspaceId, null, p.Title, null, score == 0 ? 35 : score, p.CreatedAtUtc, p.UpdatedAtUtc));
             }
         }
 
@@ -220,15 +251,7 @@ public class SearchService : ISearchService
                 .AsNoTracking()
                 .Where(n => n.WorkspaceId == workspaceId && !n.IsDeleted)
                 .Where(notePredicate)
-                .Select(n => new
-                {
-                    n.Id,
-                    n.PageId,
-                    n.Title,
-                    TagNames = n.Tags.Select(t => t.Name).ToList(),
-                    n.CreatedAtUtc,
-                    n.UpdatedAtUtc
-                })
+                .Select(n => new { n.Id, n.PageId, n.Title, TagNames = n.Tags.Select(t => t.Name).ToList(), n.CreatedAtUtc, n.UpdatedAtUtc })
                 .Take(candidateLimit)
                 .ToListAsync(cancellationToken);
 
@@ -236,69 +259,39 @@ public class SearchService : ISearchService
             {
                 var tagsString = string.Join(" ", n.TagNames);
                 var score = CalculateScore(trimmedQuery, tokens, n.Title, tagsString);
-                candidates.Add(new SearchCandidate(
-                    n.Id,
-                    "Note",
-                    workspaceId,
-                    n.PageId,
-                    n.Title,
-                    tagsString,
-                    score == 0 ? 35 : score,
-                    n.CreatedAtUtc,
-                    n.UpdatedAtUtc));
+                candidates.Add(new SearchCandidate(n.Id, "Note", workspaceId, n.PageId, n.Title, tagsString, score == 0 ? 35 : score, n.CreatedAtUtc, n.UpdatedAtUtc));
             }
         }
 
         if (searchDocs && docPredicate != null)
         {
-            // Note: ExtractedText is deliberately NOT projected here to avoid large memory allocations
             var matchingDocs = await _context.Documents
                 .AsNoTracking()
                 .Where(d => d.WorkspaceId == workspaceId && !d.IsDeleted)
                 .Where(docPredicate)
-                .Select(d => new
-                {
-                    d.Id,
-                    d.PageId,
-                    d.Title,
-                    d.FileName,
-                    d.CreatedAtUtc,
-                    d.UpdatedAtUtc
-                })
+                .Select(d => new { d.Id, d.PageId, d.Title, d.FileName, d.CreatedAtUtc, d.UpdatedAtUtc })
                 .Take(candidateLimit)
                 .ToListAsync(cancellationToken);
 
             foreach (var d in matchingDocs)
             {
                 var score = CalculateScore(trimmedQuery, tokens, d.Title, d.FileName);
-                candidates.Add(new SearchCandidate(
-                    d.Id,
-                    "Document",
-                    workspaceId,
-                    d.PageId,
-                    d.Title,
-                    d.FileName,
-                    score == 0 ? 35 : score,
-                    d.CreatedAtUtc,
-                    d.UpdatedAtUtc));
+                candidates.Add(new SearchCandidate(d.Id, "Document", workspaceId, d.PageId, d.Title, d.FileName, score == 0 ? 35 : score, d.CreatedAtUtc, d.UpdatedAtUtc));
             }
         }
 
-        // 10. Sort candidates by Relevance Score (descending), then CreatedAtUtc (descending)
+        // Sort candidates
         var sortedCandidates = candidates
             .OrderByDescending(c => c.Score)
             .ThenByDescending(c => c.CreatedAtUtc)
             .ToList();
 
-        // 11. Extract the current page slice
         var pagedSlice = sortedCandidates
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToList();
 
-        // 12. Stage 2: Materialize Text ONLY for the displayed page items (Fix 2)
-        // Only the items (maximum pageSize, e.g. 20) on the current page have their text fetched.
-        // Executed with batch 'IN' queries to avoid N+1 queries.
+        // Stage 2: Materialize Text ONLY for displayed page items
         Dictionary<Guid, string> docTexts = new();
         var pagedDocIds = pagedSlice.Where(c => c.Type == "Document").Select(c => c.Id).ToList();
         if (pagedDocIds.Count > 0)
@@ -332,7 +325,6 @@ public class SearchService : ISearchService
                 .ToDictionaryAsync(n => n.Id, n => n.Content ?? string.Empty, cancellationToken);
         }
 
-        // 13. Generate contextual snippets and assemble final results
         var finalResults = new List<SearchResultDto>(pagedSlice.Count);
         foreach (var c in pagedSlice)
         {
@@ -355,14 +347,214 @@ public class SearchService : ISearchService
                 snippet,
                 c.Score,
                 c.CreatedAtUtc,
-                c.UpdatedAtUtc));
+                c.UpdatedAtUtc,
+                null,
+                "Keyword",
+                null));
         }
 
-        var pagedResult = new PagedResult<SearchResultDto>(finalResults, page, pageSize, totalCount);
-        return Result.Success(pagedResult);
+        return Result.Success(new PagedResult<SearchResultDto>(finalResults, page, pageSize, totalCount));
     }
 
-    #region Ranking & Snippets
+    #endregion
+
+    #region Semantic Search
+
+    private async Task<Result<PagedResult<SearchResultDto>>> ExecuteSemanticSearchAsync(
+        Guid workspaceId,
+        string trimmedQuery,
+        int page,
+        int pageSize,
+        SearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        // Type filter check: Semantic search indexes Document chunks
+        var typeFilter = request.Type?.Trim();
+        if (!string.IsNullOrWhiteSpace(typeFilter) &&
+            !typeFilter.Equals("All", StringComparison.OrdinalIgnoreCase) &&
+            !typeFilter.Equals("Document", StringComparison.OrdinalIgnoreCase))
+        {
+            // If user specifically asked for Pages or Notes in Semantic mode, currently returns empty
+            return Result.Success(new PagedResult<SearchResultDto>(Array.Empty<SearchResultDto>(), page, pageSize, 0));
+        }
+
+        float[] queryVector;
+        try
+        {
+            queryVector = await _embeddingService.GenerateEmbeddingAsync(trimmedQuery, cancellationToken);
+        }
+        catch (EmbeddingException ex)
+        {
+            return Result.Failure<PagedResult<SearchResultDto>>(
+                new Error("Search.EmbeddingError", $"Failed to generate embedding for query: {ex.Message}"));
+        }
+
+        var topK = request.TopK ?? _hybridOptions.Value.DefaultTopK;
+        var vectorResult = await _vectorSearchService.SearchSimilarChunksAsync(workspaceId, queryVector, topK, cancellationToken);
+        if (!vectorResult.IsSuccess)
+        {
+            return Result.Failure<PagedResult<SearchResultDto>>(vectorResult.Error);
+        }
+
+        var semanticResults = vectorResult.Value.Select(c => new SearchResultDto(
+            c.DocumentId,
+            "Document",
+            workspaceId,
+            null,
+            c.DocumentTitle,
+            c.Text,
+            Math.Max(0.0, c.SimilarityScore) * 100.0,
+            c.CreatedAtUtc,
+            null,
+            c.ChunkId,
+            "Semantic",
+            c.SimilarityScore
+        )).ToList();
+
+        var totalCount = semanticResults.Count;
+        var pagedItems = semanticResults.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Result.Success(new PagedResult<SearchResultDto>(pagedItems, page, pageSize, totalCount));
+    }
+
+    #endregion
+
+    #region Hybrid Search (Keyword + Semantic Fusion)
+
+    private async Task<Result<PagedResult<SearchResultDto>>> ExecuteHybridSearchAsync(
+        Guid workspaceId,
+        string trimmedQuery,
+        int page,
+        int pageSize,
+        SearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        // 1. Run keyword search (top 50 candidate pool)
+        var keywordReq = new SearchRequest(trimmedQuery, 1, 50, request.Type, "Keyword");
+        var keywordRes = await ExecuteKeywordSearchAsync(workspaceId, trimmedQuery, 1, 50, keywordReq, cancellationToken);
+
+        var keywordItems = keywordRes.IsSuccess ? keywordRes.Value.Items : Array.Empty<SearchResultDto>();
+
+        // 2. Run semantic vector search
+        var topK = request.TopK ?? _hybridOptions.Value.DefaultTopK;
+        IReadOnlyList<SearchResultDto> semanticItems = Array.Empty<SearchResultDto>();
+
+        try
+        {
+            var queryVector = await _embeddingService.GenerateEmbeddingAsync(trimmedQuery, cancellationToken);
+            var vectorRes = await _vectorSearchService.SearchSimilarChunksAsync(workspaceId, queryVector, topK, cancellationToken);
+            if (vectorRes.IsSuccess)
+            {
+                semanticItems = vectorRes.Value.Select(c => new SearchResultDto(
+                    c.DocumentId,
+                    "Document",
+                    workspaceId,
+                    null,
+                    c.DocumentTitle,
+                    c.Text,
+                    Math.Max(0.0, c.SimilarityScore) * 100.0,
+                    c.CreatedAtUtc,
+                    null,
+                    c.ChunkId,
+                    "Semantic",
+                    c.SimilarityScore
+                )).ToList();
+            }
+        }
+        catch (Exception)
+        {
+            // If embeddings are unconfigured, fall back gracefully to keyword search in hybrid mode
+        }
+
+        // 3. Score Normalization & Combination (Patch Rule 6)
+        double maxKeywordScore = keywordItems.Count > 0 ? keywordItems.Max(k => k.Score) : 100.0;
+        if (maxKeywordScore <= 0.0) maxKeywordScore = 1.0;
+
+        var keywordWeight = _hybridOptions.Value.KeywordWeight;
+        var vectorWeight = _hybridOptions.Value.VectorWeight;
+
+        // Key: (Type, EntityId)
+        var merged = new Dictionary<(string Type, Guid Id), SearchResultDto>();
+
+        // Add normalized keyword items
+        foreach (var kw in keywordItems)
+        {
+            var normalizedKwScore = (kw.Score / maxKeywordScore) * 100.0;
+            var weightedScore = normalizedKwScore * keywordWeight;
+
+            merged[(kw.Type, kw.Id)] = new SearchResultDto(
+                kw.Id,
+                kw.Type,
+                kw.WorkspaceId,
+                kw.PageId,
+                kw.Title,
+                kw.Snippet,
+                weightedScore,
+                kw.CreatedAtUtc,
+                kw.UpdatedAtUtc,
+                null,
+                "Keyword",
+                null);
+        }
+
+        // Merge normalized semantic items
+        foreach (var sem in semanticItems)
+        {
+            var key = ("Document", sem.Id);
+            var normalizedSemScore = Math.Max(0.0, sem.SimilarityScore ?? 0.0) * 100.0;
+            var weightedSemScore = normalizedSemScore * vectorWeight;
+
+            if (merged.TryGetValue(key, out var existing))
+            {
+                // Multi-signal match boost (+10)
+                var combinedScore = existing.Score + weightedSemScore + 10.0;
+
+                merged[key] = new SearchResultDto(
+                    existing.Id,
+                    existing.Type,
+                    existing.WorkspaceId,
+                    existing.PageId,
+                    existing.Title,
+                    sem.Snippet, // Chunk snippet is more specific
+                    combinedScore,
+                    existing.CreatedAtUtc,
+                    existing.UpdatedAtUtc,
+                    sem.ChunkId,
+                    "Hybrid",
+                    sem.SimilarityScore);
+            }
+            else
+            {
+                merged[key] = new SearchResultDto(
+                    sem.Id,
+                    "Document",
+                    sem.WorkspaceId,
+                    null,
+                    sem.Title,
+                    sem.Snippet,
+                    weightedSemScore,
+                    sem.CreatedAtUtc,
+                    sem.UpdatedAtUtc,
+                    sem.ChunkId,
+                    "Semantic",
+                    sem.SimilarityScore);
+            }
+        }
+
+        var sortedResults = merged.Values
+            .OrderByDescending(r => r.Score)
+            .ThenByDescending(r => r.CreatedAtUtc)
+            .ToList();
+
+        var totalCount = sortedResults.Count;
+        var pagedItems = sortedResults.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Result.Success(new PagedResult<SearchResultDto>(pagedItems, page, pageSize, totalCount));
+    }
+
+    #endregion
+
+    #region Ranking & Snippet Helpers
 
     private static double CalculateScore(
         string fullQuery,
@@ -372,16 +564,15 @@ public class SearchService : ISearchService
     {
         double score = 0;
 
-        // Title matches (highest weight)
         if (!string.IsNullOrEmpty(title))
         {
             if (title.Equals(fullQuery, StringComparison.OrdinalIgnoreCase))
             {
-                score += 150; // Exact title match
+                score += 150;
             }
             else if (title.Contains(fullQuery, StringComparison.OrdinalIgnoreCase))
             {
-                score += 100; // Title contains full phrase
+                score += 100;
             }
 
             foreach (var token in tokens)
@@ -393,7 +584,6 @@ public class SearchService : ISearchService
             }
         }
 
-        // Secondary matches (Tags or FileName: medium-high weight)
         if (!string.IsNullOrEmpty(secondary))
         {
             if (secondary.Contains(fullQuery, StringComparison.OrdinalIgnoreCase))
@@ -420,10 +610,8 @@ public class SearchService : ISearchService
             return string.Empty;
         }
 
-        // Look for full query first
         var matchIndex = content.IndexOf(query, StringComparison.OrdinalIgnoreCase);
 
-        // If not found, look for first matching token
         if (matchIndex < 0)
         {
             foreach (var token in tokens)
@@ -439,7 +627,6 @@ public class SearchService : ISearchService
 
         if (matchIndex < 0)
         {
-            // Fall back to beginning of content
             if (content.Length <= maxLength)
             {
                 return content.Trim();
@@ -448,7 +635,6 @@ public class SearchService : ISearchService
             return content[..maxLength].TrimEnd() + "...";
         }
 
-        // Context window around match
         const int leadingContext = 40;
         var startIndex = Math.Max(0, matchIndex - leadingContext);
         var length = Math.Min(content.Length - startIndex, maxLength);
@@ -473,7 +659,6 @@ public class SearchService : ISearchService
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
         if (!raw.StartsWith("{") && !raw.StartsWith("[")) return raw;
 
-        // Strip simple JSON syntax characters to extract clean readable words
         var cleaned = Regex.Replace(raw, @"[""{}\[\]:,]", " ");
         cleaned = Regex.Replace(cleaned, @"\s+", " ");
         return cleaned.Trim();

@@ -46,6 +46,9 @@ public interface IApiClient
     Task<Result<DocumentDto>> UploadDocumentAsync(Guid workspaceId, Stream fileStream, string fileName, string contentType, string? title = null, Guid? pageId = null, CancellationToken cancellationToken = default);
     Task<Result> DeleteDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
     Task<Result<byte[]>> DownloadDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<DocumentChunkDto>>> ChunkDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+    Task<Result<GenerateEmbeddingsResponse>> EmbedDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<DocumentChunkDto>>> GetDocumentChunksAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
 
     // Search
     Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default);
@@ -609,6 +612,66 @@ public class ApiClient : IApiClient
         }
     }
 
+    public async Task<Result<IReadOnlyList<DocumentChunkDto>>> ChunkDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsync($"/api/workspaces/{workspaceId}/documents/{documentId}/chunk", null, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<IReadOnlyList<DocumentChunkDto>>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<IReadOnlyList<DocumentChunkDto>>(Error.NullValue);
+            }
+
+            return await ExtractErrorAsync<IReadOnlyList<DocumentChunkDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<DocumentChunkDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<GenerateEmbeddingsResponse>> EmbedDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsync($"/api/workspaces/{workspaceId}/documents/{documentId}/embed", null, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<GenerateEmbeddingsResponse>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<GenerateEmbeddingsResponse>(Error.NullValue);
+            }
+
+            return await ExtractErrorAsync<GenerateEmbeddingsResponse>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<GenerateEmbeddingsResponse>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<DocumentChunkDto>>> GetDocumentChunksAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"/api/workspaces/{workspaceId}/documents/{documentId}/chunks", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<IReadOnlyList<DocumentChunkDto>>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<IReadOnlyList<DocumentChunkDto>>(Error.NullValue);
+            }
+
+            return await ExtractErrorAsync<IReadOnlyList<DocumentChunkDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<DocumentChunkDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
     public async Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -619,6 +682,14 @@ public class ApiClient : IApiClient
             if (!string.IsNullOrWhiteSpace(request.Type))
             {
                 url += $"&type={Uri.EscapeDataString(request.Type)}";
+            }
+            if (!string.IsNullOrWhiteSpace(request.Mode))
+            {
+                url += $"&mode={Uri.EscapeDataString(request.Mode)}";
+            }
+            if (request.TopK.HasValue)
+            {
+                url += $"&topK={request.TopK.Value}";
             }
 
             var response = await _httpClient.GetAsync(url, cancellationToken);

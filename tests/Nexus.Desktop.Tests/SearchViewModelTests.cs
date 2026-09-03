@@ -207,4 +207,36 @@ public class SearchViewModelTests
         Assert.False(vm.IsBusy);
         Assert.Equal("Simulated search failure.", vm.ErrorMessage);
     }
+
+    [Fact]
+    public async Task SetSearchModeAsync_Should_Update_SelectedSearchMode_And_Requery()
+    {
+        var item1 = new SearchResultDto(Guid.NewGuid(), "Document", _workspaceId, null, "AI Arch", "Vector snippet", 88, DateTime.UtcNow, null, Guid.NewGuid(), "Semantic", 0.88);
+        _fakeApiClient.SearchResults.Add(item1);
+
+        var vm = new SearchViewModel(_fakeApiClient, _fakeNavigationService, _userSession)
+        {
+            SearchQuery = "AI"
+        };
+
+        await vm.SearchAsync();
+        Assert.Equal("Keyword", vm.SelectedSearchMode);
+        Assert.Single(vm.Results);
+
+        // Switch to Semantic mode
+        await vm.SetSearchModeAsync("Semantic");
+
+        Assert.Equal("Semantic", vm.SelectedSearchMode);
+        Assert.True(vm.HasSearched);
+    }
+
+    [Fact]
+    public async Task SearchModeOptions_Should_Contain_Keyword_Semantic_And_Hybrid()
+    {
+        var vm = new SearchViewModel(_fakeApiClient, _fakeNavigationService, _userSession);
+
+        Assert.Contains("Keyword", vm.SearchModeOptions);
+        Assert.Contains("Semantic", vm.SearchModeOptions);
+        Assert.Contains("Hybrid", vm.SearchModeOptions);
+    }
 }

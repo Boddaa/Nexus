@@ -20,6 +20,9 @@ public static class DependencyInjection
         services.AddScoped<IPageService, PageService>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<Nexus.Application.Features.Documents.Services.IDocumentService, Nexus.Application.Features.Documents.Services.DocumentService>();
+        services.AddScoped<Nexus.Application.Features.Documents.Services.IDocumentChunkService, Nexus.Application.Features.Documents.Services.DocumentChunkService>();
+        services.AddScoped<Nexus.Application.Features.Documents.Services.IChunkEmbeddingService, Nexus.Application.Features.Documents.Services.ChunkEmbeddingService>();
+        services.AddScoped<Nexus.Application.Features.Search.Services.IVectorSearchService, Nexus.Application.Features.Search.Services.VectorSearchService>();
         services.AddScoped<Nexus.Application.Features.Search.Services.ISearchService, Nexus.Application.Features.Search.Services.SearchService>();
 
         return services;

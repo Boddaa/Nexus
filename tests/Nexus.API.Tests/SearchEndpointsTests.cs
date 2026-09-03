@@ -155,4 +155,20 @@ public class SearchEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var unauthorizedRes = await clientA.GetAsync($"/api/workspaces/{workspaceB.Id}/search?q=Secret");
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedRes.StatusCode);
     }
+
+    [Fact]
+    public async Task Search_With_Invalid_Mode_Should_Return_400()
+    {
+        var (client, _, workspace) = await CreateUserAndWorkspaceAsync("search_invalid_mode");
+        var response = await client.GetAsync($"/api/workspaces/{workspace.Id}/search?q=test&mode=UnknownMode");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Search_With_Keyword_Mode_Should_Return_200()
+    {
+        var (client, _, workspace) = await CreateUserAndWorkspaceAsync("search_kw_mode");
+        var response = await client.GetAsync($"/api/workspaces/{workspace.Id}/search?q=test&mode=Keyword");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
 }

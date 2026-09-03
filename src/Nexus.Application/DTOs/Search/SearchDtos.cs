@@ -4,7 +4,9 @@ public record SearchRequest(
     string Query,
     int Page = 1,
     int PageSize = 20,
-    string? Type = null
+    string? Type = null,
+    string Mode = "Keyword",
+    int? TopK = null
 );
 
 public record SearchResultDto(
@@ -16,7 +18,10 @@ public record SearchResultDto(
     string Snippet,
     double Score,
     DateTime CreatedAtUtc,
-    DateTime? UpdatedAtUtc
+    DateTime? UpdatedAtUtc,
+    Guid? ChunkId = null,
+    string? SearchMode = null,
+    double? SimilarityScore = null
 );
 
 public record PagedResult<T>(

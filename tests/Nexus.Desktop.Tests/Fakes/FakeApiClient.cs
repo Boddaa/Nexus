@@ -352,6 +352,28 @@ public class FakeApiClient : IApiClient
         return Task.FromResult(Result.Success(new byte[] { 1, 2, 3, 4 }));
     }
 
+    public List<Nexus.Application.DTOs.Documents.DocumentChunkDto> DocumentChunks { get; set; } = new();
+
+    public Task<Result<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>> ChunkDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>(FailureError));
+        var chunks = DocumentChunks.Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>(chunks));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Documents.GenerateEmbeddingsResponse>> EmbedDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Documents.GenerateEmbeddingsResponse>(FailureError));
+        return Task.FromResult(Result.Success(new Nexus.Application.DTOs.Documents.GenerateEmbeddingsResponse(documentId, DocumentChunks.Count)));
+    }
+
+    public Task<Result<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>> GetDocumentChunksAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>(FailureError));
+        var chunks = DocumentChunks.Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentChunkDto>>(chunks));
+    }
+
     // Search
     public List<SearchResultDto> SearchResults { get; set; } = new();
 

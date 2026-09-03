@@ -47,14 +47,17 @@ public static class DependencyInjection
         // Storage
         services.AddScoped<IFileStorage, LocalFileStorage>();
 
-        // Document Text Extractors
+        // Document Text Extractors & Chunker
         services.AddSingleton<IDocumentTextExtractor, PlainTextDocumentExtractor>();
         services.AddSingleton<IDocumentTextExtractor, MarkdownDocumentExtractor>();
         services.AddSingleton<IDocumentTextExtractor, DocxDocumentExtractor>();
         services.AddSingleton<IDocumentTextExtractor, PdfDocumentExtractor>();
+        services.Configure<Nexus.Application.Common.Options.ChunkingOptions>(configuration.GetSection(Nexus.Application.Common.Options.ChunkingOptions.SectionName));
+        services.AddSingleton<IDocumentChunker, Nexus.Infrastructure.AI.Chunking.DocumentChunker>();
 
         // AI & Vector Layer (Replaceable & decoupled)
         services.Configure<Nexus.Application.Common.Options.EmbeddingOptions>(configuration.GetSection(Nexus.Application.Common.Options.EmbeddingOptions.SectionName));
+        services.Configure<Nexus.Application.Common.Options.HybridSearchOptions>(configuration.GetSection(Nexus.Application.Common.Options.HybridSearchOptions.SectionName));
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();
         services.AddScoped<Nexus.Infrastructure.AI.Embeddings.IEmbeddingProvider, Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();

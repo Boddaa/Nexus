@@ -30,14 +30,22 @@ public class Document : AuditableEntity
 public class DocumentChunk : AuditableEntity
 {
     public Guid DocumentId { get; set; }
+    public Guid WorkspaceId { get; set; }
     public int ChunkIndex { get; set; }
-    public string Content { get; set; } = string.Empty;
-    public int TokenCount { get; set; }
-    public int StartCharOffset { get; set; }
-    public int EndCharOffset { get; set; }
-    public int PageNumber { get; set; } = 1;
-    public string? VectorStoreId { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public int StartPosition { get; set; }
+    public int EndPosition { get; set; }
+    public int? PageNumber { get; set; }
+
+    public EmbeddingStatus EmbeddingStatus { get; set; } = EmbeddingStatus.Pending;
+    public byte[]? EmbeddingVector { get; set; }
+    public string? EmbeddingModel { get; set; }
+    public int? EmbeddingDimensions { get; set; }
 
     public Document Document { get; set; } = null!;
+    public Workspace Workspace { get; set; } = null!;
     public ICollection<SourceReference> SourceReferences { get; set; } = new List<SourceReference>();
+
+    public DocumentChunk() { }
+    public DocumentChunk(Guid id) { Id = id; }
 }

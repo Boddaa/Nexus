@@ -56,13 +56,31 @@ public class DocumentChunkConfiguration : IEntityTypeConfiguration<DocumentChunk
 
         builder.HasKey(c => c.Id);
 
-        builder.Property(c => c.Content)
+        builder.Property(c => c.Text)
             .IsRequired();
 
-        builder.Property(c => c.VectorStoreId)
+        builder.Property(c => c.EmbeddingModel)
             .HasMaxLength(100);
 
+        builder.Property(c => c.EmbeddingStatus)
+            .IsRequired();
+
+        builder.Property(c => c.EmbeddingVector)
+            .HasColumnType("varbinary(max)");
+
+        builder.HasOne(c => c.Document)
+            .WithMany(d => d.Chunks)
+            .HasForeignKey(c => c.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(c => c.Workspace)
+            .WithMany()
+            .HasForeignKey(c => c.WorkspaceId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        builder.HasIndex(c => new { c.WorkspaceId, c.DocumentId });
         builder.HasIndex(c => new { c.DocumentId, c.ChunkIndex });
+        builder.HasIndex(c => new { c.WorkspaceId, c.EmbeddingStatus });
 
         builder.HasQueryFilter(c => !c.IsDeleted);
     }

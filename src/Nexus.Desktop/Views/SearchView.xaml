@@ -54,21 +54,32 @@
         <Grid Grid.Row="2" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Filter Dropdown / Combo -->
+            <!-- Mode Selector -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="Filter by Type:" FontSize="13" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock Text="Mode:" FontSize="13" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox ItemsSource="{Binding SearchModeOptions}"
+                          SelectedItem="{Binding SelectedSearchMode}"
+                          Style="{StaticResource ModernComboBox}"
+                          Width="120" />
+            </StackPanel>
+
+            <!-- Filter Dropdown / Combo -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Filter by Type:" FontSize="13" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox ItemsSource="{Binding TypeFilterOptions}"
                           SelectedItem="{Binding SelectedTypeFilter}"
                           Style="{StaticResource ModernComboBox}"
-                          Width="140" />
+                          Width="130" />
             </StackPanel>
 
             <!-- Result Count Stats -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center"
                         Visibility="{Binding HasSearched, Converter={StaticResource BoolToVisConverter}}">
                 <TextBlock Text="{Binding TotalCount, StringFormat='Found {0:N0} match(es)'}"
                            FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Medium" />
@@ -158,6 +169,10 @@
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="7,2" Margin="0,0,8,0">
                                                 <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{StaticResource AccentEmeraldBrush}" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="0,0,8,0"
+                                                    Visibility="{Binding SearchMode, Converter={StaticResource StringNotEmptyToVisConverter}}">
+                                                <TextBlock Text="{Binding SearchMode}" FontSize="10" Foreground="{StaticResource AccentCyanBrush}" FontWeight="SemiBold" />
                                             </Border>
                                             <Border Background="{StaticResource BgInputBrush}" CornerRadius="4" Padding="6,2">
                                                 <TextBlock Text="{Binding Score, StringFormat='Score: {0:F0}'}" FontSize="10" Foreground="{StaticResource TextMutedBrush}" FontWeight="Medium" />

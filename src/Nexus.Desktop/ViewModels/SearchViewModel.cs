@@ -49,6 +49,16 @@ public partial class SearchViewModel : ViewModelBase
     [ObservableProperty]
     private string? _errorMessage;
 
+    [ObservableProperty]
+    private string _selectedSearchMode = "Keyword";
+
+    public ObservableCollection<string> SearchModeOptions { get; } = new()
+    {
+        "Keyword",
+        "Semantic",
+        "Hybrid"
+    };
+
     public ObservableCollection<string> TypeFilterOptions { get; } = new()
     {
         "All",
@@ -95,7 +105,7 @@ public partial class SearchViewModel : ViewModelBase
             StatusMessage = null;
 
             var typeParam = SelectedTypeFilter == "All" ? null : SelectedTypeFilter;
-            var request = new SearchRequest(SearchQuery.Trim(), page, 20, typeParam);
+            var request = new SearchRequest(SearchQuery.Trim(), page, 20, typeParam, SelectedSearchMode);
 
             var result = await _apiClient.SearchAsync(_userSession.SelectedWorkspace.Id, request);
 
@@ -130,6 +140,18 @@ public partial class SearchViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SetSearchModeAsync(string mode)
+    {
+        if (SelectedSearchMode == mode) return;
+        SelectedSearchMode = mode;
+
+        if (HasSearched && !string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            await ExecuteSearchPageAsync(1);
         }
     }
 
