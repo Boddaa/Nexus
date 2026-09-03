@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkspaceService, WorkspaceService>();
         services.AddScoped<IPageService, PageService>();
         services.AddScoped<INoteService, NoteService>();
+        services.AddScoped<Nexus.Application.Features.Documents.Services.IDocumentService, Nexus.Application.Features.Documents.Services.DocumentService>();
 
         return services;
     }

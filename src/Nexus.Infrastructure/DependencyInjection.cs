@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nexus.Application.Common.Interfaces;
 using Nexus.Infrastructure.AI;
+using Nexus.Infrastructure.Parsing;
 using Nexus.Infrastructure.Persistence;
 using Nexus.Infrastructure.Search;
 using Nexus.Infrastructure.Security;
@@ -45,6 +46,12 @@ public static class DependencyInjection
 
         // Storage
         services.AddScoped<IFileStorage, LocalFileStorage>();
+
+        // Document Text Extractors
+        services.AddSingleton<IDocumentTextExtractor, PlainTextDocumentExtractor>();
+        services.AddSingleton<IDocumentTextExtractor, MarkdownDocumentExtractor>();
+        services.AddSingleton<IDocumentTextExtractor, DocxDocumentExtractor>();
+        services.AddSingleton<IDocumentTextExtractor, PdfDocumentExtractor>();
 
         // AI & Vector Layer (Replaceable & decoupled)
         services.AddSingleton<IChatService, MockChatService>();

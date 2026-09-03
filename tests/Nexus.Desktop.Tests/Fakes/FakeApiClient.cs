@@ -1,3 +1,4 @@
+using System.IO;
 using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
@@ -252,5 +253,101 @@ public class FakeApiClient : IApiClient
         Notes.RemoveAll(n => n.Id == noteId);
         NoteSummaries.RemoveAll(n => n.Id == noteId);
         return Task.FromResult(Result.Success());
+    }
+
+    // Documents
+    public List<Nexus.Application.DTOs.Documents.DocumentSummaryDto> DocumentSummaries { get; set; } = new();
+    public List<Nexus.Application.DTOs.Documents.DocumentDetailDto> DocumentDetails { get; set; } = new();
+
+    public Task<Result<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentSummaryDto>>> GetDocumentsAsync(Guid workspaceId, Guid? pageId = null, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentSummaryDto>>(FailureError));
+        var query = DocumentSummaries.Where(d => d.WorkspaceId == workspaceId);
+        if (pageId.HasValue) query = query.Where(d => d.PageId == pageId.Value);
+        return Task.FromResult(Result.Success<IReadOnlyList<Nexus.Application.DTOs.Documents.DocumentSummaryDto>>(query.ToList()));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Documents.DocumentDetailDto>> GetDocumentByIdAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Documents.DocumentDetailDto>(FailureError));
+        var doc = DocumentDetails.FirstOrDefault(d => d.Id == documentId && d.WorkspaceId == workspaceId);
+        if (doc == null) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Documents.DocumentDetailDto>(Error.NotFound));
+        return Task.FromResult(Result.Success(doc));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Documents.DocumentDto>> UploadDocumentAsync(
+        Guid workspaceId,
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        string? title = null,
+        Guid? pageId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Documents.DocumentDto>(FailureError));
+        var id = Guid.NewGuid();
+        var docDto = new Nexus.Application.DTOs.Documents.DocumentDto(
+            id,
+            workspaceId,
+            pageId,
+            null,
+            title ?? fileName,
+            fileName,
+            contentType,
+            Path.GetExtension(fileName).ToLowerInvariant(),
+            fileStream.Length,
+            Nexus.Domain.Enums.DocumentStatus.Processed,
+            null,
+            1,
+            100,
+            DateTime.UtcNow,
+            null);
+
+        DocumentSummaries.Add(new Nexus.Application.DTOs.Documents.DocumentSummaryDto(
+            id,
+            workspaceId,
+            pageId,
+            null,
+            title ?? fileName,
+            fileName,
+            contentType,
+            Path.GetExtension(fileName).ToLowerInvariant(),
+            fileStream.Length,
+            Nexus.Domain.Enums.DocumentStatus.Processed,
+            DateTime.UtcNow));
+
+        DocumentDetails.Add(new Nexus.Application.DTOs.Documents.DocumentDetailDto(
+            id,
+            workspaceId,
+            pageId,
+            null,
+            title ?? fileName,
+            fileName,
+            contentType,
+            Path.GetExtension(fileName).ToLowerInvariant(),
+            fileStream.Length,
+            Nexus.Domain.Enums.DocumentStatus.Processed,
+            null,
+            "Sample extracted text from document",
+            1,
+            34,
+            DateTime.UtcNow,
+            null));
+
+        return Task.FromResult(Result.Success(docDto));
+    }
+
+    public Task<Result> DeleteDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        DocumentSummaries.RemoveAll(d => d.Id == documentId);
+        DocumentDetails.RemoveAll(d => d.Id == documentId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<byte[]>> DownloadDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<byte[]>(FailureError));
+        return Task.FromResult(Result.Success(new byte[] { 1, 2, 3, 4 }));
     }
 }

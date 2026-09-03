@@ -60,21 +60,6 @@ public partial class HomeViewModel : ViewModelBase
     private void GoToStudy() => _navigationService.NavigateTo<StudyViewModel>();
 }
 
-
-
-public partial class DocumentsViewModel : ViewModelBase
-{
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _statusInfo = "Drag and drop PDF/Docs here to ingest into your AI Knowledge Engine.";
-
-    public DocumentsViewModel(UserSession userSession)
-    {
-        _userSession = userSession;
-    }
-}
-
 public partial class BoardsViewModel : ViewModelBase
 {
     private readonly UserSession _userSession;

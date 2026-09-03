@@ -1,8 +1,10 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Nexus.Application.DTOs.Auth;
+using Nexus.Application.DTOs.Documents;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
 using Nexus.Application.DTOs.Workspaces;
@@ -36,6 +38,13 @@ public interface IApiClient
     Task<Result<NoteDto>> CreateNoteAsync(Guid workspaceId, CreateNoteRequest request, CancellationToken cancellationToken = default);
     Task<Result<NoteDto>> UpdateNoteAsync(Guid workspaceId, Guid noteId, UpdateNoteRequest request, CancellationToken cancellationToken = default);
     Task<Result> DeleteNoteAsync(Guid workspaceId, Guid noteId, CancellationToken cancellationToken = default);
+
+    // Documents
+    Task<Result<IReadOnlyList<DocumentSummaryDto>>> GetDocumentsAsync(Guid workspaceId, Guid? pageId = null, CancellationToken cancellationToken = default);
+    Task<Result<DocumentDetailDto>> GetDocumentByIdAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+    Task<Result<DocumentDto>> UploadDocumentAsync(Guid workspaceId, Stream fileStream, string fileName, string contentType, string? title = null, Guid? pageId = null, CancellationToken cancellationToken = default);
+    Task<Result> DeleteDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
+    Task<Result<byte[]>> DownloadDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -461,6 +470,138 @@ public class ApiClient : IApiClient
         catch (Exception ex)
         {
             return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    #endregion
+
+    #region Documents
+
+    public async Task<Result<IReadOnlyList<DocumentSummaryDto>>> GetDocumentsAsync(Guid workspaceId, Guid? pageId = null, CancellationToken cancellationToken = default)
+    {
+        SetAuthorizationHeader();
+        try
+        {
+            var uri = $"api/workspaces/{workspaceId}/documents";
+            if (pageId.HasValue)
+            {
+                uri += $"?pageId={pageId.Value}";
+            }
+
+            var response = await _httpClient.GetAsync(uri, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var documents = await response.Content.ReadFromJsonAsync<List<DocumentSummaryDto>>(_jsonOptions, cancellationToken);
+                return Result.Success<IReadOnlyList<DocumentSummaryDto>>(documents ?? new List<DocumentSummaryDto>());
+            }
+
+            return await ExtractErrorAsync<IReadOnlyList<DocumentSummaryDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<DocumentSummaryDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<DocumentDetailDto>> GetDocumentByIdAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        SetAuthorizationHeader();
+        try
+        {
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/documents/{documentId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var document = await response.Content.ReadFromJsonAsync<DocumentDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(document!);
+            }
+
+            return await ExtractErrorAsync<DocumentDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<DocumentDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<DocumentDto>> UploadDocumentAsync(
+        Guid workspaceId,
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        string? title = null,
+        Guid? pageId = null,
+        CancellationToken cancellationToken = default)
+    {
+        SetAuthorizationHeader();
+        try
+        {
+            using var formData = new MultipartFormDataContent();
+
+            var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+            formData.Add(streamContent, "file", fileName);
+
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                formData.Add(new StringContent(title), "title");
+            }
+
+            if (pageId.HasValue)
+            {
+                formData.Add(new StringContent(pageId.Value.ToString()), "pageId");
+            }
+
+            var response = await _httpClient.PostAsync($"api/workspaces/{workspaceId}/documents", formData, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var doc = await response.Content.ReadFromJsonAsync<DocumentDto>(_jsonOptions, cancellationToken);
+                return Result.Success(doc!);
+            }
+
+            return await ExtractErrorAsync<DocumentDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<DocumentDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        SetAuthorizationHeader();
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/documents/{documentId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<byte[]>> DownloadDocumentAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        SetAuthorizationHeader();
+        try
+        {
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/documents/{documentId}/download", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                return Result.Success(bytes);
+            }
+
+            return await ExtractErrorAsync<byte[]>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<byte[]>(new Error("Network.Error", ex.Message));
         }
     }
 

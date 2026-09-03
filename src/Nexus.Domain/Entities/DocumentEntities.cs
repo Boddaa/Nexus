@@ -6,6 +6,7 @@ namespace Nexus.Domain.Entities;
 public class Document : AuditableEntity
 {
     public Guid WorkspaceId { get; set; }
+    public Guid? PageId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = "application/pdf";
@@ -19,7 +20,11 @@ public class Document : AuditableEntity
     public string Checksum { get; set; } = string.Empty;
 
     public Workspace Workspace { get; set; } = null!;
+    public Page? Page { get; set; }
     public ICollection<DocumentChunk> Chunks { get; set; } = new List<DocumentChunk>();
+
+    public Document() { }
+    public Document(Guid id) { Id = id; }
 }
 
 public class DocumentChunk : AuditableEntity

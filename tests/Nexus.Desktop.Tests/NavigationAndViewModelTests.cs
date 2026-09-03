@@ -21,9 +21,11 @@ public class NavigationAndViewModelTests
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IApiClient, FakeApiClient>();
         services.AddSingleton<IDialogService, FakeDialogService>();
+        services.AddSingleton<IFilePickerService, FakeFilePickerService>();
         services.AddTransient<HomeViewModel>();
         services.AddTransient<PagesViewModel>();
         services.AddTransient<NotesViewModel>();
+        services.AddTransient<DocumentsViewModel>();
 
         var provider = services.BuildServiceProvider();
         var navService = provider.GetRequiredService<INavigationService>();
@@ -53,6 +55,14 @@ public class NavigationAndViewModelTests
         // Assert 3
         Assert.True(eventFired);
         Assert.IsType<NotesViewModel>(navService.CurrentViewModel);
+
+        // Act 4 - Documents
+        eventFired = false;
+        navService.NavigateTo<DocumentsViewModel>();
+
+        // Assert 4
+        Assert.True(eventFired);
+        Assert.IsType<DocumentsViewModel>(navService.CurrentViewModel);
     }
 
     [Fact]

@@ -31,6 +31,14 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Checksum)
             .HasMaxLength(128);
 
+        builder.HasOne(d => d.Page)
+            .WithMany(p => p.Documents)
+            .HasForeignKey(d => d.PageId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(d => new { d.WorkspaceId, d.CreatedAtUtc });
+        builder.HasIndex(d => d.PageId);
+
         builder.HasMany(d => d.Chunks)
             .WithOne(c => c.Document)
             .HasForeignKey(c => c.DocumentId)

@@ -32,6 +32,7 @@ public partial class App : System.Windows.Application
         services.AddSingleton<ITokenStorage, TokenStorage>();
         services.AddSingleton<INavigationService, NavigationService>();
         services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IFilePickerService, FilePickerService>();
 
         // ViewModels
         services.AddSingleton<MainViewModel>();

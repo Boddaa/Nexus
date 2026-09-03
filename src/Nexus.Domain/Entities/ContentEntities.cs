@@ -17,6 +17,7 @@ public class Page : AuditableEntity
     public Page? ParentPage { get; set; }
     public ICollection<Page> SubPages { get; set; } = new List<Page>();
     public ICollection<Note> Notes { get; set; } = new List<Note>();
+    public ICollection<Document> Documents { get; set; } = new List<Document>();
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
 }
 
