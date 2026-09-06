@@ -10,6 +10,7 @@ using Nexus.Application.DTOs.Documents;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
 using Nexus.Application.DTOs.Search;
+using Nexus.Application.DTOs.Study;
 using Nexus.Application.DTOs.Workspaces;
 using Nexus.Domain.Common;
 
@@ -74,6 +75,40 @@ public interface IApiClient
     Task<Result<IReadOnlyList<AiGenerationSummaryDto>>> GetAiGenerationsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
     Task<Result<AiOperationResultDto>> GetAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default);
     Task<Result<bool>> DeleteAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default);
+
+    // Study Engine & AI Tutor (Phase 6)
+    Task<Result<IReadOnlyList<StudyTopicDto>>> GetTopicsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<Result<StudyTopicDto>> CreateTopicAsync(Guid workspaceId, CreateStudyTopicRequest request, CancellationToken cancellationToken = default);
+    Task<Result<StudyTopicDto>> UpdateTopicAsync(Guid workspaceId, Guid topicId, UpdateStudyTopicRequest request, CancellationToken cancellationToken = default);
+    Task<Result<bool>> DeleteTopicAsync(Guid workspaceId, Guid topicId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<StudySessionDto>>> GetStudySessionsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<StudySessionDto>> StartStudySessionAsync(Guid workspaceId, Guid? topicId, StartStudySessionRequest request, CancellationToken cancellationToken = default);
+    Task<Result<StudySessionDto>> CompleteStudySessionAsync(Guid workspaceId, Guid sessionId, CompleteStudySessionRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<FlashcardDto>>> GetFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<FlashcardDto>> CreateFlashcardAsync(Guid workspaceId, Guid? topicId, CreateFlashcardRequest request, CancellationToken cancellationToken = default);
+    Task<Result<FlashcardDto>> ReviewFlashcardAsync(Guid workspaceId, Guid flashcardId, ReviewFlashcardRequest request, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<FlashcardDto>>> GenerateFlashcardsAsync(Guid workspaceId, Guid? topicId, GenerateFlashcardsRequest request, CancellationToken cancellationToken = default);
+    Task<Result<bool>> DeleteFlashcardAsync(Guid workspaceId, Guid flashcardId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<QuizDto>>> GetQuizzesAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<SafeQuizDetailDto>> GetSafeQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default);
+    Task<Result<QuizDetailDto>> GetQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default);
+    Task<Result<QuizDetailDto>> GenerateQuizAsync(Guid workspaceId, Guid? topicId, GenerateQuizRequest request, CancellationToken cancellationToken = default);
+    Task<Result<QuizAttemptResultDto>> StartQuizAttemptAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default);
+    Task<Result<QuizAttemptResultDto>> SubmitQuizAttemptAsync(Guid workspaceId, Guid attemptId, SubmitQuizAttemptRequest request, CancellationToken cancellationToken = default);
+    Task<Result<QuizAttemptResultDto>> GetQuizAttemptResultAsync(Guid workspaceId, Guid attemptId, CancellationToken cancellationToken = default);
+    Task<Result<bool>> DeleteQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default);
+
+    Task<Result<KnowledgeAssessmentDto>> GetAssessmentAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<StudyDashboardDto>> GetStudyDashboardAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
+    Task<Result<TutorResponseDto>> TutorChatAsync(Guid workspaceId, TutorChatRequest request, CancellationToken cancellationToken = default);
+    Task<Result<TutorHintDto>> TutorHintAsync(Guid workspaceId, TutorHintRequest request, CancellationToken cancellationToken = default);
+    Task<Result<TutorExplanationDto>> TutorExplainWrongAsync(Guid workspaceId, TutorExplainWrongAnswerRequest request, CancellationToken cancellationToken = default);
+    Task<Result<TutorMiniExerciseDto>> TutorExerciseAsync(Guid workspaceId, TutorMiniExerciseRequest request, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -1000,6 +1035,529 @@ public class ApiClient : IApiClient
             return Result.Failure<AiOperationResultDto>(new Error("Network.Error", ex.Message));
         }
     }
+
+    #region Study Engine & AI Tutor (Phase 6)
+
+    public async Task<Result<IReadOnlyList<StudyTopicDto>>> GetTopicsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/study/topics", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<StudyTopicDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<StudyTopicDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<StudyTopicDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<StudyTopicDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<StudyTopicDto>> CreateTopicAsync(Guid workspaceId, CreateStudyTopicRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/topics", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<StudyTopicDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<StudyTopicDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<StudyTopicDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<StudyTopicDto>> UpdateTopicAsync(Guid workspaceId, Guid topicId, UpdateStudyTopicRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/study/topics/{topicId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<StudyTopicDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<StudyTopicDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<StudyTopicDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> DeleteTopicAsync(Guid workspaceId, Guid topicId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/study/topics/{topicId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<StudySessionDto>>> GetStudySessionsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/sessions" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<StudySessionDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<StudySessionDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<StudySessionDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<StudySessionDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<StudySessionDto>> StartStudySessionAsync(Guid workspaceId, Guid? topicId, StartStudySessionRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/sessions" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<StudySessionDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<StudySessionDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<StudySessionDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<StudySessionDto>> CompleteStudySessionAsync(Guid workspaceId, Guid sessionId, CompleteStudySessionRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/sessions/{sessionId}/complete", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<StudySessionDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<StudySessionDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<StudySessionDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<FlashcardDto>>> GetFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/flashcards" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<FlashcardDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<FlashcardDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<FlashcardDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<FlashcardDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/flashcards/due" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<FlashcardDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<FlashcardDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<FlashcardDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<FlashcardDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<FlashcardDto>> CreateFlashcardAsync(Guid workspaceId, Guid? topicId, CreateFlashcardRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/flashcards" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<FlashcardDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<FlashcardDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<FlashcardDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<FlashcardDto>> ReviewFlashcardAsync(Guid workspaceId, Guid flashcardId, ReviewFlashcardRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/flashcards/{flashcardId}/review", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<FlashcardDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<FlashcardDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<FlashcardDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<FlashcardDto>>> GenerateFlashcardsAsync(Guid workspaceId, Guid? topicId, GenerateFlashcardsRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/flashcards/generate" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<FlashcardDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<FlashcardDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<FlashcardDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<FlashcardDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> DeleteFlashcardAsync(Guid workspaceId, Guid flashcardId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/study/flashcards/{flashcardId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<QuizDto>>> GetQuizzesAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/quizzes" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<IReadOnlyList<QuizDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(list ?? Array.Empty<QuizDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<QuizDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<QuizDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<SafeQuizDetailDto>> GetSafeQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/study/quizzes/{quizId}/safe", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<SafeQuizDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<SafeQuizDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<SafeQuizDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<QuizDetailDto>> GetQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/study/quizzes/{quizId}?safe=false", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<QuizDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<QuizDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<QuizDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<QuizDetailDto>> GenerateQuizAsync(Guid workspaceId, Guid? topicId, GenerateQuizRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/quizzes/generate" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<QuizDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<QuizDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<QuizDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<QuizAttemptResultDto>> StartQuizAttemptAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsync($"api/workspaces/{workspaceId}/study/quizzes/{quizId}/attempts", null, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<QuizAttemptResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<QuizAttemptResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<QuizAttemptResultDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<QuizAttemptResultDto>> SubmitQuizAttemptAsync(Guid workspaceId, Guid attemptId, SubmitQuizAttemptRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/attempts/{attemptId}/submit", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<QuizAttemptResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<QuizAttemptResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<QuizAttemptResultDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<QuizAttemptResultDto>> GetQuizAttemptResultAsync(Guid workspaceId, Guid attemptId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/study/attempts/{attemptId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<QuizAttemptResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<QuizAttemptResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<QuizAttemptResultDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> DeleteQuizAsync(Guid workspaceId, Guid quizId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/study/quizzes/{quizId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<KnowledgeAssessmentDto>> GetAssessmentAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var url = $"api/workspaces/{workspaceId}/study/assessment" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<KnowledgeAssessmentDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<KnowledgeAssessmentDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<KnowledgeAssessmentDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<StudyDashboardDto>> GetStudyDashboardAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/study/dashboard", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<StudyDashboardDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<StudyDashboardDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<StudyDashboardDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<TutorResponseDto>> TutorChatAsync(Guid workspaceId, TutorChatRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/tutor/chat", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<TutorResponseDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<TutorResponseDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<TutorResponseDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<TutorHintDto>> TutorHintAsync(Guid workspaceId, TutorHintRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/tutor/hint", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<TutorHintDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<TutorHintDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<TutorHintDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<TutorExplanationDto>> TutorExplainWrongAsync(Guid workspaceId, TutorExplainWrongAnswerRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/tutor/explain-wrong", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<TutorExplanationDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<TutorExplanationDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<TutorExplanationDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<TutorMiniExerciseDto>> TutorExerciseAsync(Guid workspaceId, TutorMiniExerciseRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/study/tutor/exercise", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<TutorMiniExerciseDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<TutorMiniExerciseDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<TutorMiniExerciseDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    #endregion
 
     private async Task<Result> ExtractErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

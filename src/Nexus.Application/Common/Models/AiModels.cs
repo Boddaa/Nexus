@@ -61,9 +61,9 @@ public record MindMapEdgeDto(
 public record GeneratedQuiz(
     string Title,
     string? Description,
-    IReadOnlyList<QuizQuestionDto> Questions);
+    IReadOnlyList<GeneratedQuizQuestionDto> Questions);
 
-public record QuizQuestionDto(
+public record GeneratedQuizQuestionDto(
     string QuestionText,
     QuestionType QuestionType,
     IReadOnlyList<string> Options,

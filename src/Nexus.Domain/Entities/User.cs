@@ -13,5 +13,9 @@ public class User : AuditableEntity
 
     public ICollection<Workspace> OwnedWorkspaces { get; set; } = new List<Workspace>();
     public ICollection<WorkspaceMember> WorkspaceMemberships { get; set; } = new List<WorkspaceMember>();
+    public ICollection<StudyTopic> StudyTopics { get; set; } = new List<StudyTopic>();
+    public ICollection<StudySession> StudySessions { get; set; } = new List<StudySession>();
+    public ICollection<Flashcard> Flashcards { get; set; } = new List<Flashcard>();
+    public ICollection<Quiz> Quizzes { get; set; } = new List<Quiz>();
     public ICollection<QuizAttempt> QuizAttempts { get; set; } = new List<QuizAttempt>();
 }

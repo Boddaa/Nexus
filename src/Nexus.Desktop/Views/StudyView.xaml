@@ -4,40 +4,600 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:Nexus.Desktop.ViewModels"
+             xmlns:conv="clr-namespace:Nexus.Desktop.Converters"
              mc:Ignorable="d" 
-             d:DesignHeight="750" d:DesignWidth="1100">
-    <Grid Margin="24">
+             d:DesignHeight="850" d:DesignWidth="1200">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVis" />
+        <conv:NullToVisibilityConverter x:Key="NullToVis" />
+        <conv:GreaterThanZeroToVisibilityConverter x:Key="GreaterThanZeroToVis" />
+        <conv:EqualityToVisibilityConverter x:Key="EqualityToVis" />
+        <conv:EqualityToBooleanConverter x:Key="EqualityToBool" />
+    </UserControl.Resources>
+
+    <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- TOP BAR: Header & Tab Navigation -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
+        <!-- TOP BAR: Title & Navigation Tabs -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
+            <!-- Header Title -->
             <StackPanel Grid.Column="0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🧠" FontSize="26" Margin="0,0,10,0" VerticalAlignment="Center" />
-                    <TextBlock Text="AI Knowledge Intelligence &amp; Workflows" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="🎓" FontSize="26" Margin="0,0,10,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Study Engine &amp; AI Tutor" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Text="Summarize documents, explain complex topics, extract key points, generate practice quizzes, and synthesize study guides." 
+                <TextBlock Text="Knowledge-driven learning, Spaced Repetition (SM-2), Quiz Engine, and grounded AI Tutor." 
                            FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" Margin="36,4,0,0" />
             </StackPanel>
 
             <!-- Mode Selector Tabs -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="12,6">
-                    <TextBlock Text="⚡ AI Knowledge Studio" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentCyanBrush}" />
-                </Border>
-            </StackPanel>
+            <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="4" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="📊 Dashboard"
+                            Command="{Binding SwitchTabCommand}" CommandParameter="0"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="2,0"
+                            FontWeight="SemiBold" />
+                    <Button Content="🗂️ Flashcards (SM-2)"
+                            Command="{Binding SwitchTabCommand}" CommandParameter="1"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="2,0"
+                            FontWeight="SemiBold" />
+                    <Button Content="📝 Quiz Arena"
+                            Command="{Binding SwitchTabCommand}" CommandParameter="2"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="2,0"
+                            FontWeight="SemiBold" />
+                    <Button Content="🎓 AI Tutor"
+                            Command="{Binding SwitchTabCommand}" CommandParameter="3"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="2,0"
+                            FontWeight="SemiBold" />
+                    <Button Content="⚡ Knowledge Studio"
+                            Command="{Binding SwitchTabCommand}" CommandParameter="4"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="2,0"
+                            FontWeight="SemiBold" />
+                </StackPanel>
+            </Border>
         </Grid>
 
-        <!-- MAIN CONTENT AREA -->
-        <Grid Grid.Row="1">
+        <!-- ==================== TAB 0: STUDY DASHBOARD ==================== -->
+        <Grid Grid.Row="1" Visibility="{Binding SelectedTabIndex, Converter={StaticResource EqualityToVis}, ConverterParameter=0}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- KPI Metric Cards -->
+            <UniformGrid Grid.Row="0" Columns="5" Margin="0,0,0,16">
+                <Border Style="{StaticResource ModernCard}" Padding="16" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="TOTAL TOPICS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Dashboard.TotalTopics, FallbackValue='0'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,6,0,0" />
+                        <TextBlock Text="Learning Areas" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ModernCard}" Padding="16" Margin="4,0,4,0">
+                    <StackPanel>
+                        <TextBlock Text="FLASHCARDS DUE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Dashboard.DueFlashcards, FallbackValue='0'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource AccentOrangeBrush}" Margin="0,6,0,0" />
+                        <TextBlock Text="Ready for Review" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ModernCard}" Padding="16" Margin="4,0,4,0">
+                    <StackPanel>
+                        <TextBlock Text="STUDY MINUTES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Dashboard.TotalStudyMinutes, FallbackValue='0'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" Margin="0,6,0,0" />
+                        <TextBlock Text="Total Focus Time" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ModernCard}" Padding="16" Margin="4,0,4,0">
+                    <StackPanel>
+                        <TextBlock Text="AVG QUIZ SCORE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Dashboard.AverageQuizScore, StringFormat='{}{0:F1}%', FallbackValue='0.0%'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource AccentPurpleBrush}" Margin="0,6,0,0" />
+                        <TextBlock Text="Exam Accuracy" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ModernCard}" Padding="16" Margin="8,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="OVERALL MASTERY" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Dashboard.OverallMasteryPercentage, StringFormat='{}{0:F1}%', FallbackValue='0.0%'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource AccentBlueBrush}" Margin="0,6,0,0" />
+                        <TextBlock Text="Retention Level" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Main Dashboard Body: Topics on left, Mastery/Recommendations on right -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="380" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Column: Study Topics & Actions -->
+                <Border Grid.Column="0" Style="{StaticResource ModernCard}" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                            <TextBlock Text="STUDY TOPICS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding NewTopicTitle, UpdateSourceTrigger=PropertyChanged}" 
+                                         Style="{StaticResource ModernTextBox}" Margin="0,0,8,0" />
+                                <Button Grid.Column="1" Content="+ Add" Command="{Binding CreateTopicCommand}" Style="{StaticResource PrimaryButton}" Padding="12,6" />
+                            </Grid>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="1" Text="Select a topic to focus study materials:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+
+                        <ListBox Grid.Row="2" ItemsSource="{Binding Topics}" SelectedItem="{Binding SelectedTopic}" Style="{StaticResource ModernListBox}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="10,8" Margin="0,2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" />
+                                                <TextBlock Text="{Binding Description}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0">
+                                                    <TextBlock Text="{Binding FlashcardCount, StringFormat='{}{0} cards'}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </Border>
+                                                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2">
+                                                    <TextBlock Text="{Binding QuizCount, StringFormat='{}{0} quizzes'}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <!-- Right Column: Assessment, Recommendations & Due Previews -->
+                <Border Grid.Column="2" Style="{StaticResource ModernCard}" Padding="20">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- Recommendations Header -->
+                            <TextBlock Text="🎯 AI RECOMMENDED ACTIONS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,10" />
+
+                            <ItemsControl ItemsSource="{Binding Assessment.RecommendedActions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="12,8" Margin="0,0,0,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                            <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Mastery Breakdown -->
+                            <TextBlock Text="📈 KNOWLEDGE MASTERY STATUS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" Margin="0,16,0,10" />
+
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Strong Areas -->
+                                <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,6,0">
+                                    <StackPanel>
+                                        <TextBlock Text="💪 Strong (≥80%)" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding Assessment.StrongAreas.Count, StringFormat='{}{0} topics'}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,8" />
+                                        <ItemsControl ItemsSource="{Binding Assessment.StrongAreas}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding TopicTitle}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,1" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Developing Areas -->
+                                <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="3,0,3,0">
+                                    <StackPanel>
+                                        <TextBlock Text="🔄 Developing (60-79%)" FontWeight="Bold" Foreground="{StaticResource AccentOrangeBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding Assessment.DevelopingAreas.Count, StringFormat='{}{0} topics'}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,8" />
+                                        <ItemsControl ItemsSource="{Binding Assessment.DevelopingAreas}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding TopicTitle}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,1" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Weak Areas -->
+                                <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="6,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="⚠️ Needs Practice (&lt;60%)" FontWeight="Bold" Foreground="{StaticResource AccentRedBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding Assessment.WeakAreas.Count, StringFormat='{}{0} topics'}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,8" />
+                                        <ItemsControl ItemsSource="{Binding Assessment.WeakAreas}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding TopicTitle}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,1" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- Quick Action Buttons -->
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="▶ Start Study Session" Command="{Binding StartSessionCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Padding="16,8" />
+                                <Button Content="🗂️ Review Due Cards" Command="{Binding SwitchTabCommand}" CommandParameter="1" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Padding="16,8" />
+                                <Button Content="📝 Take Practice Quiz" Command="{Binding SwitchTabCommand}" CommandParameter="2" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Padding="16,8" />
+                                <Button Content="💬 Chat with Tutor" Command="{Binding SwitchTabCommand}" CommandParameter="3" Style="{StaticResource SecondaryButton}" Padding="16,8" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ==================== TAB 1: FLASHCARDS & SPACED REPETITION (SM-2) ==================== -->
+        <Grid Grid.Row="1" Visibility="{Binding SelectedTabIndex, Converter={StaticResource EqualityToVis}, ConverterParameter=1}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Controls: Deck Management & Generation -->
+            <Border Grid.Column="0" Style="{StaticResource ModernCard}" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="SPACED REPETITION (SM-2)" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AccentOrangeBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="Algorithm optimizes review intervals based on your active recall rating." FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,16" />
+
+                        <!-- Due Status Banner -->
+                        <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="DUE FOR REVIEW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding DueFlashcards.Count, StringFormat='{}{0} Cards'}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource AccentOrangeBrush}" Margin="0,4,0,0" />
+                                <Button Content="🔄 Refresh Due Queue" Command="{Binding LoadDueFlashcardsCommand}" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Add Single Card -->
+                        <TextBlock Text="CREATE FLASHCARD" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="Front (Prompt / Question)" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                        <TextBox Text="{Binding NewCardFront, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="60" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                        <TextBlock Text="Back (Answer / Explanation)" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                        <TextBox Text="{Binding NewCardBack, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="60" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                        <Button Content="+ Add Flashcard" Command="{Binding CreateFlashcardCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch" Margin="0,0,0,20" />
+
+                        <!-- AI Generate Cards -->
+                        <TextBlock Text="⚡ AI FLASHCARD GENERATOR" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="Card Count" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                        <TextBox Text="{Binding GenerateCardCount, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Margin="0,0,0,10" />
+
+                        <Button Content="✨ Generate from Topic/Knowledge" Command="{Binding GenerateFlashcardsCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Center: Interactive SM-2 Study Card -->
+            <Border Grid.Column="2" Style="{StaticResource ModernCard}" Padding="28">
+                <Grid>
+                    <!-- Empty State -->
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding CurrentFlashcard, Converter={StaticResource NullToVis}, ConverterParameter=inverse}">
+                        <TextBlock Text="🎉" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
+                        <TextBlock Text="No Cards Due for Review!" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="You have mastered all scheduled flashcards for today. Great job!" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,16" />
+                        <Button Content="Load All Cards / Refresh" Command="{Binding LoadDueFlashcardsCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Active Flashcard Container -->
+                    <Grid Visibility="{Binding CurrentFlashcard, Converter={StaticResource NullToVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Card Top Bar: Queue progress & Difficulty -->
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
+                                    <TextBlock Text="{Binding CurrentCardIndex, StringFormat='{}Card {0}'}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Border>
+                                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="8,4">
+                                    <TextBlock Text="{Binding CurrentFlashcard.Difficulty, StringFormat='{}Difficulty: {0}'}" FontSize="12" Foreground="{StaticResource AccentCyanBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                       Text="{Binding CurrentFlashcard.Repetitions, StringFormat='{}Repetitions: {0} | Ease: {1:F2}'}" 
+                                       FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                        </Grid>
+
+                        <!-- The Flashcard Box -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="24" VerticalAlignment="Stretch">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel VerticalAlignment="Center">
+                                    <!-- FRONT PROMPT -->
+                                    <TextBlock Text="QUESTION / CONCEPT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" Margin="0,0,0,12" />
+                                    <TextBlock Text="{Binding CurrentFlashcard.FrontText}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,24" />
+
+                                    <!-- REVEAL BUTTON -->
+                                    <Button Content="👁️ Reveal Answer" Command="{Binding RevealCardAnswerCommand}" 
+                                            Visibility="{Binding IsCardRevealed, Converter={StaticResource InverseBoolToVis}}"
+                                            Style="{StaticResource SecondaryButton}" HorizontalAlignment="Center" Padding="20,10" Margin="0,0,0,10" />
+
+                                    <!-- BACK ANSWER -->
+                                    <StackPanel Visibility="{Binding IsCardRevealed, Converter={StaticResource BoolToVis}}">
+                                        <Separator Background="{StaticResource BorderBrush}" Margin="0,10,0,16" />
+                                        <TextBlock Text="ANSWER / EXPLANATION" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                                        <TextBlock Text="{Binding CurrentFlashcard.BackText}" FontSize="16" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,16" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+
+                        <!-- SM-2 Rating Controls (Revealed Only) -->
+                        <Border Grid.Row="2" Margin="0,16,0,0" Visibility="{Binding IsCardRevealed, Converter={StaticResource BoolToVis}}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="Rate your active recall recall accuracy:" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button Content="🔴 Again (&lt;1d)" Command="{Binding RateFlashcardCommand}" CommandParameter="Again" 
+                                            Style="{StaticResource DangerButton}" Padding="16,10" Margin="4,0" />
+                                    <Button Content="🟠 Hard (3d)" Command="{Binding RateFlashcardCommand}" CommandParameter="Hard" 
+                                            Style="{StaticResource SecondaryButton}" Padding="16,10" Margin="4,0" />
+                                    <Button Content="🟢 Good (6d)" Command="{Binding RateFlashcardCommand}" CommandParameter="Good" 
+                                            Style="{StaticResource PrimaryButton}" Padding="16,10" Margin="4,0" />
+                                    <Button Content="🔵 Easy (8d+)" Command="{Binding RateFlashcardCommand}" CommandParameter="Easy" 
+                                            Style="{StaticResource SecondaryButton}" Padding="16,10" Margin="4,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ==================== TAB 2: QUIZ ARENA ==================== -->
+        <Grid Grid.Row="1" Visibility="{Binding SelectedTabIndex, Converter={StaticResource EqualityToVis}, ConverterParameter=2}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Quiz List & Generator -->
+            <Border Grid.Column="0" Style="{StaticResource ModernCard}" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="AVAILABLE PRACTICE QUIZZES" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10" />
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Quizzes}" SelectedItem="{Binding SelectedQuiz}" Style="{StaticResource ModernListBox}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="10,8" Margin="0,2" Background="{StaticResource SurfaceBrush}" CornerRadius="6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" />
+                                        <TextBlock Text="{Binding Description}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2" Margin="0,0,4,0">
+                                                <TextBlock Text="{Binding QuestionCount, StringFormat='{}{0} questions'}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" />
+                                            </Border>
+                                            <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2">
+                                                <TextBlock Text="{Binding DifficultyLevel}" FontSize="10" Foreground="{StaticResource AccentCyanBrush}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Quiz Generator Card at Bottom -->
+                    <Border Grid.Row="2" Background="{StaticResource BgHoverBrush}" CornerRadius="8" Padding="12" Margin="0,12,0,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="⚡ GENERATE AI QUIZ" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,6" />
+                            <TextBlock Text="Questions count:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2" />
+                            <TextBox Text="{Binding GenerateQuizCount, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Margin="0,0,0,8" />
+                            <Button Content="✨ Generate Practice Quiz" Command="{Binding GenerateQuizCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Center: Quiz Taking Arena or Quiz Selection -->
+            <Border Grid.Column="2" Style="{StaticResource ModernCard}" Padding="24">
+                <Grid>
+                    <!-- Not Taking Quiz: Start Button -->
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding IsTakingQuiz, Converter={StaticResource InverseBoolToVis}}">
+                        <TextBlock Text="📝" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
+                        <TextBlock Text="{Binding SelectedQuiz.Title, FallbackValue='Select a Quiz to Begin'}" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding SelectedQuiz.Description, FallbackValue='Challenge yourself with active practice questions.'}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,20" />
+
+                        <Button Content="🚀 Start Quiz Attempt" Command="{Binding StartQuizCommand}" Style="{StaticResource PrimaryButton}" Padding="24,12" FontSize="14" HorizontalAlignment="Center" Margin="0,0,0,16" />
+
+                        <!-- Last Result Scorecard if finished -->
+                        <Border Visibility="{Binding IsQuizFinished, Converter={StaticResource BoolToVis}}" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,10,0,0">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="RESULT SCORECARD" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding LastQuizResult.ScorePercentage, StringFormat='{}{0:F1}%', FallbackValue='0%'}" FontSize="32" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding LastQuizResult.AiFeedback}" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Active Taking Quiz Interface -->
+                    <Grid Visibility="{Binding IsTakingQuiz, Converter={StaticResource BoolToVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Quiz Header -->
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ActiveQuiz.Title}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,10,0" />
+                                <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="{Binding CurrentQuestionIndex, StringFormat='{}Question {0}'}" FontSize="12" Foreground="{StaticResource AccentCyanBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <Button Grid.Column="1" HorizontalAlignment="Right" Content="💡 Ask Tutor for Hint" Command="{Binding GetTutorHintCommand}" Style="{StaticResource GhostButton}" Foreground="{StaticResource AccentOrangeBrush}" />
+                        </Grid>
+
+                        <!-- Question & Options -->
+                        <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding CurrentQuestion.QuestionText}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" />
+
+                                    <ItemsControl ItemsSource="{Binding CurrentQuestion.Options}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding}" 
+                                                        Command="{Binding DataContext.SelectAnswerOptionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource SecondaryButton}" 
+                                                        HorizontalContentAlignment="Left"
+                                                        Padding="16,12" Margin="0,4" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Text="{Binding SelectedAnswerOption, StringFormat='{}Selected: {0}'}" 
+                                               Visibility="{Binding SelectedAnswerOption, Converter={StaticResource StringNotEmptyToVis}}"
+                                               FontSize="13" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,16,0,0" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+
+                        <!-- Bottom Navigation: Prev, Next, Submit -->
+                        <Grid Grid.Row="2" Margin="0,16,0,0">
+                            <Button Content="◀ Previous" Command="{Binding PreviousQuizQuestionCommand}" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Padding="16,8" />
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Next ▶" Command="{Binding NextQuizQuestionCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Padding="16,8" />
+                                <Button Content="✅ Submit Exam" Command="{Binding SubmitQuizCommand}" Style="{StaticResource PrimaryButton}" Padding="20,8" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ==================== TAB 3: AI TUTOR ==================== -->
+        <Grid Grid.Row="1" Visibility="{Binding SelectedTabIndex, Converter={StaticResource EqualityToVis}, ConverterParameter=3}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Tutor Top Action Bar -->
+            <Border Grid.Row="0" Style="{StaticResource ModernCard}" Padding="12,10" Margin="0,0,0,10">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Active Topic:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox ItemsSource="{Binding Topics}" SelectedItem="{Binding SelectedTopic}" DisplayMemberPath="Title" Style="{StaticResource ModernComboBox}" Width="200" Margin="0,0,16,0" />
+                        <Button Content="🧩 Generate Practice Exercise" Command="{Binding GenerateMiniExerciseCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Content="▶ Start Focused Session" Command="{Binding StartSessionCommand}" Style="{StaticResource PrimaryButton}" Padding="12,6" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Chat Stream -->
+            <Border Grid.Row="1" Style="{StaticResource ModernCard}" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding TutorMessages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,4,0,8" Padding="14,10" CornerRadius="8"
+                                        Background="{Binding Role, Converter={StaticResource EqualityToBool}, ConverterParameter=User, FallbackValue={StaticResource SurfaceBrush}}">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding Role, StringFormat='{}{0}'}" FontWeight="Bold" FontSize="11" 
+                                                       Foreground="{StaticResource AccentCyanBrush}" />
+                                            <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}" FontSize="10" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right" />
+                                        </Grid>
+
+                                        <TextBlock Text="{Binding Content}" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+
+                                        <!-- Key Takeaways if present -->
+                                        <ItemsControl ItemsSource="{Binding KeyTakeaways}" Margin="0,8,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding StringFormat='• {0}'}" FontSize="12" Foreground="{StaticResource AccentEmeraldBrush}" Margin="0,1" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Chat Input Area -->
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0" Text="{Binding TutorInput, UpdateSourceTrigger=PropertyChanged}" 
+                         Style="{StaticResource ModernTextBox}" Height="45" Margin="0,0,10,0" />
+                <Button Grid.Column="1" Content="Send ➔" Command="{Binding SendTutorMessageCommand}" Style="{StaticResource PrimaryButton}" Padding="20,10" />
+            </Grid>
+        </Grid>
+
+        <!-- ==================== TAB 4: KNOWLEDGE STUDIO (Phase 5 Workflows) ==================== -->
+        <Grid Grid.Row="1" Visibility="{Binding SelectedTabIndex, Converter={StaticResource EqualityToVis}, ConverterParameter=4}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="380" />
                 <ColumnDefinition Width="20" />
@@ -48,281 +608,68 @@
             <Border Grid.Column="0" Style="{StaticResource ModernCard}" Padding="20">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <!-- Section Header -->
                         <TextBlock Text="WORKFLOW CONFIGURATION" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,14" />
 
-                        <!-- Operation Type Selector -->
                         <TextBlock Text="AI Operation" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
                         <ComboBox ItemsSource="{Binding AvailableOperations}"
                                   SelectedItem="{Binding SelectedOperation}"
                                   Style="{StaticResource ModernComboBox}"
                                   Margin="0,0,0,16" />
 
-                        <!-- Source Type Selector -->
-                        <TextBlock Text="Source Type" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                        <TextBlock Text="Knowledge Source Type" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
                         <ComboBox ItemsSource="{Binding AvailableSourceTypes}"
                                   SelectedItem="{Binding SelectedSourceType}"
                                   Style="{StaticResource ModernComboBox}"
                                   Margin="0,0,0,16" />
 
-                        <!-- Source Item Selector -->
-                        <TextBlock Text="Select Knowledge Source" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                        <TextBlock Text="Select Source" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
                         <ComboBox ItemsSource="{Binding AvailableSources}"
                                   SelectedItem="{Binding SelectedSource}"
                                   DisplayMemberPath="Title"
                                   Style="{StaticResource ModernComboBox}"
                                   Margin="0,0,0,16" />
 
-                        <!-- Questions Specific Options -->
-                        <StackPanel Visibility="{Binding IsQuestionsOperation, Converter={StaticResource BoolToVisConverter}}" Margin="0,0,0,16">
-                            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Padding="14,12" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Quiz Settings" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentAmberBrush}" Margin="0,0,0,10" />
-
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Number of Questions" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding QuestionCountOptions}" SelectedItem="{Binding QuestionCount}" Width="80" Style="{StaticResource ModernComboBox}" />
-                                    </Grid>
-
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Difficulty Level" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding DifficultyOptions}" SelectedItem="{Binding Difficulty}" Width="120" Style="{StaticResource ModernComboBox}" />
-                                    </Grid>
-
-                                    <CheckBox Content="Include Explanation / Answers" IsChecked="{Binding IncludeAnswers}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Additional Instructions / Prompt -->
-                        <TextBlock Text="Custom Instructions / Prompt (Optional)" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
+                        <TextBlock Text="Additional Instructions (Optional)" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6" />
                         <TextBox Text="{Binding AdditionalInstructions, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource ModernTextBox}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
                                  Height="80"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
                                  VerticalScrollBarVisibility="Auto"
                                  Margin="0,0,0,20" />
 
-                        <!-- Execute Button -->
-                        <Button Content="🚀 Run AI Workflow"
-                                Command="{Binding ExecuteOperationCommand}"
+                        <Button Content="⚡ Execute AI Workflow"
+                                Command="{Binding RunOperationCommand}"
                                 Style="{StaticResource PrimaryButton}"
                                 Height="42"
-                                FontWeight="Bold"
                                 FontSize="14"
-                                IsEnabled="{Binding IsExecuting, Converter={StaticResource InverseBoolConverter}}"
-                                Margin="0,0,0,14" />
-
-                        <!-- Status & Progress Feedback -->
-                        <StackPanel Visibility="{Binding IsExecuting, Converter={StaticResource BoolToVisConverter}}" Margin="0,0,0,10">
-                            <ProgressBar IsIndeterminate="True" Height="4" Margin="0,0,0,8" />
-                            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="{StaticResource AccentCyanBrush}" HorizontalAlignment="Center" />
-                        </StackPanel>
-
-                        <!-- Success Banner -->
-                        <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
-                                Visibility="{Binding StatusMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
-                            <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="{StaticResource AccentEmeraldBrush}" TextWrapping="Wrap" />
-                        </Border>
-
-                        <!-- Error Banner -->
-                        <Border Background="#3B1824" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
-                                Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisConverter}}">
-                            <TextBlock Text="{Binding ErrorMessage}" FontSize="12" Foreground="{StaticResource AccentRoseBrush}" TextWrapping="Wrap" />
-                        </Border>
-
-                        <!-- History Quick View Button -->
-                        <Button Content="📜 Refresh Workspace History"
-                                Command="{Binding LoadHistoryCommand}"
-                                Style="{StaticResource SecondaryButton}"
-                                Height="34"
-                                Margin="0,10,0,0" />
+                                FontWeight="SemiBold" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <!-- RIGHT COLUMN: Output & Canvas View -->
-            <Border Grid.Column="2" Style="{StaticResource ModernCard}" Padding="24">
+            <!-- RIGHT COLUMN: Output & Save as Note -->
+            <Border Grid.Column="2" Style="{StaticResource ModernCard}" Padding="20">
                 <Grid>
-                    <!-- Empty State When No Result -->
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                                Visibility="{Binding HasResult, Converter={StaticResource InverseBoolToVisConverter}}">
-                        <TextBlock Text="✨" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,12" />
-                        <TextBlock Text="AI Knowledge Canvas" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Select a source on the left and run an AI workflow to generate summaries, key points, quizzes, or study material." 
-                                   FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="460" />
-                    </StackPanel>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <!-- Active Result View -->
-                    <Grid Visibility="{Binding HasResult, Converter={StaticResource BoolToVisConverter}}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <!-- Result Header & Action Buttons -->
-                        <Grid Grid.Row="0" Margin="0,0,0,14">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="8,3" Margin="0,0,8,0">
-                                        <TextBlock Text="{Binding CurrentResult.Operation}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentCyanBrush}" />
-                                    </Border>
-                                    <TextBlock Text="{Binding CurrentResult.Model, StringFormat='Model: {0}'}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <TextBlock Text="{Binding CurrentResult.CreatedAtUtc, StringFormat='{}{0:HH:mm:ss}'}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <!-- Copy Button -->
-                                <Button Content="📋 Copy"
-                                        Command="{Binding CopyResultCommand}"
-                                        Style="{StaticResource SecondaryButton}"
-                                        Padding="14,6" Margin="0,0,8,0" />
-
-                                <!-- Save as Note Button -->
-                                <Button Content="💾 Save as Note"
-                                        Command="{Binding ToggleSaveNotePanelCommand}"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Padding="14,6" />
-                            </StackPanel>
-                        </Grid>
-
-                        <!-- Collapsible Save as Note Sub-Panel -->
-                        <Border Grid.Row="1" Background="{StaticResource BgDarkBrush}" CornerRadius="8" Padding="14" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1" Margin="0,0,0,14"
-                                Visibility="{Binding IsSaveNoteOpen, Converter={StaticResource BoolToVisConverter}}">
-                            <StackPanel>
-                                <TextBlock Text="Save AI Output Directly as a Note" FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,10" />
-
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Destination Page:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePagesForNote}" SelectedItem="{Binding SelectedPageForNote}" DisplayMemberPath="Title" Style="{StaticResource ModernComboBox}" />
-                                </Grid>
-
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Note Title:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                    <TextBox Grid.Column="1" Text="{Binding SaveNoteTitle, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" />
-                                </Grid>
-
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Content="Cancel" Command="{Binding ToggleSaveNotePanelCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" Padding="14,6" />
-                                    <Button Content="Confirm Save" Command="{Binding SaveAsNoteCommand}" Style="{StaticResource PrimaryButton}" Padding="16,6"
-                                            IsEnabled="{Binding IsSavingNote, Converter={StaticResource InverseBoolConverter}}" />
-                                </StackPanel>
-
-                                <TextBlock Text="{Binding SaveNoteSuccessMessage}" Foreground="{StaticResource AccentEmeraldBrush}" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,0"
-                                           Visibility="{Binding SaveNoteSuccessMessage, Converter={StaticResource StringNotEmptyToVisConverter}}" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Main Content Display -->
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,14">
-                            <StackPanel>
-                                <!-- Formatted Content / Summary / Explanation / Study Guide -->
-                                <TextBox Text="{Binding CurrentResult.Content, Mode=OneWay}"
-                                         IsReadOnly="True"
-                                         TextWrapping="Wrap"
-                                         AcceptsReturn="True"
-                                         Style="{StaticResource ModernTextBox}"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         Foreground="{StaticResource TextPrimaryBrush}"
-                                         FontSize="14" />
-
-                                <!-- Key Points Cards (if present) -->
-                                <ItemsControl ItemsSource="{Binding ResultKeyPoints}" Margin="0,14,0,0"
-                                              Visibility="{Binding ResultKeyPoints.Count, Converter={StaticResource GreaterThanZeroToVisibilityConverter}}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="6" Padding="12,8" Margin="0,0,0,6" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="📌" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                                    <TextBlock Text="{Binding}" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- Questions Quiz Cards (if present) -->
-                                <ItemsControl ItemsSource="{Binding ResultQuestions}" Margin="0,14,0,0"
-                                              Visibility="{Binding ResultQuestions.Count, Converter={StaticResource GreaterThanZeroToVisibilityConverter}}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Padding="14" Margin="0,0,0,10" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1">
-                                                <StackPanel>
-                                                    <Grid Margin="0,0,0,8">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding Question}" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                                                        <Border Grid.Column="1" Background="{StaticResource BgHoverBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Top" Margin="8,0,0,0">
-                                                            <TextBlock Text="{Binding Difficulty}" FontSize="11" Foreground="{StaticResource AccentAmberBrush}" FontWeight="Medium" />
-                                                        </Border>
-                                                    </Grid>
-
-                                                    <Button Content="👁️ Reveal / Hide Answer"
-                                                            Command="{Binding ToggleAnswerCommand}"
-                                                            Style="{StaticResource SecondaryButton}"
-                                                            HorizontalAlignment="Left"
-                                                            Padding="10,4" Margin="0,4,0,8" />
-
-                                                    <Border Background="{StaticResource BgInputBrush}" CornerRadius="6" Padding="12,8"
-                                                            Visibility="{Binding IsAnswerRevealed, Converter={StaticResource BoolToVisConverter}}">
-                                                        <StackPanel>
-                                                            <TextBlock Text="Answer &amp; Explanation:" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" Margin="0,0,0,4" />
-                                                            <TextBlock Text="{Binding Answer}" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                                                        </StackPanel>
-                                                    </Border>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </ScrollViewer>
-
-                        <!-- Sources / Citations Footnote Bar -->
-                        <Border Grid.Row="3" Background="{StaticResource BgDarkBrush}" CornerRadius="6" Padding="12,8"
-                                Visibility="{Binding ResultSources.Count, Converter={StaticResource GreaterThanZeroToVisibilityConverter}}">
-                            <StackPanel>
-                                <TextBlock Text="Referenced Sources &amp; Citations:" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
-                                <ItemsControl ItemsSource="{Binding ResultSources}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding SourceTitle, StringFormat='• {0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
+                    <Grid Grid.Row="0" Margin="0,0,0,14">
+                        <TextBlock Text="GENERATED KNOWLEDGE OUTPUT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="💾 Save as Note" Command="{Binding OpenSaveDialogCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" />
                     </Grid>
+
+                    <TextBox Grid.Row="1" Text="{Binding ResultContent, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource ModernTextBox}"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
                 </Grid>
             </Border>
         </Grid>
+
     </Grid>
 </UserControl>

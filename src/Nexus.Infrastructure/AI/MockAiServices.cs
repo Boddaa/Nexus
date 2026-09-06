@@ -139,7 +139,7 @@ public class MockAiStudyService : IAiStudyService
 {
     public Task<GeneratedQuiz> GenerateQuizAsync(string contextText, string topic, int questionCount = 5, string difficulty = "Medium", CancellationToken cancellationToken = default)
     {
-        var questions = new List<QuizQuestionDto>
+        var questions = new List<GeneratedQuizQuestionDto>
         {
             new($"What is the primary role of {topic}?", QuestionType.MultipleChoice, new[] { "Option A", "Option B", "Option C", "Option D" }, "Option A", "Option A is the correct architectural definition.")
         };

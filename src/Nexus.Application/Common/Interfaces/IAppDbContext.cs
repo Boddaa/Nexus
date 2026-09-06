@@ -22,11 +22,13 @@ public interface IAppDbContext
     DbSet<MindMapEdge> MindMapEdges { get; }
     DbSet<KnowledgeConcept> KnowledgeConcepts { get; }
     DbSet<KnowledgeRelation> KnowledgeRelations { get; }
+    DbSet<StudyTopic> StudyTopics { get; }
     DbSet<StudySession> StudySessions { get; }
     DbSet<Flashcard> Flashcards { get; }
     DbSet<Quiz> Quizzes { get; }
     DbSet<QuizQuestion> QuizQuestions { get; }
     DbSet<QuizAttempt> QuizAttempts { get; }
+    DbSet<QuizAnswer> QuizAnswers { get; }
     DbSet<AiConversation> AiConversations { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<SourceReference> SourceReferences { get; }

@@ -86,15 +86,3 @@ public partial class MindMapsViewModel : ViewModelBase
     }
 }
 
-public partial class StudyViewModel : AiOperationViewModel
-{
-    public StudyViewModel(
-        IApiClient apiClient,
-        IDialogService dialogService,
-        INavigationService navigationService,
-        UserSession userSession)
-        : base(apiClient, dialogService, navigationService, userSession)
-    {
-    }
-}
-

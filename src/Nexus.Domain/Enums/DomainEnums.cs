@@ -79,3 +79,19 @@ public enum ContextType
     Page = 3,
     Study = 4
 }
+
+public enum StudySessionStatus
+{
+    NotStarted = 1,
+    InProgress = 2,
+    Completed = 3,
+    Cancelled = 4
+}
+
+public enum ReviewRating
+{
+    Again = 1,
+    Hard = 2,
+    Good = 3,
+    Easy = 4
+}

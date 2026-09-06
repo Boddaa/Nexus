@@ -21,6 +21,7 @@ public class Workspace : AuditableEntity
     public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
     public ICollection<KnowledgeConcept> Concepts { get; set; } = new List<KnowledgeConcept>();
+    public ICollection<StudyTopic> StudyTopics { get; set; } = new List<StudyTopic>();
     public ICollection<StudySession> StudySessions { get; set; } = new List<StudySession>();
     public ICollection<Flashcard> Flashcards { get; set; } = new List<Flashcard>();
     public ICollection<Quiz> Quizzes { get; set; } = new List<Quiz>();

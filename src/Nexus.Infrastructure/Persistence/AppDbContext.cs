@@ -34,11 +34,13 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<MindMapEdge> MindMapEdges => Set<MindMapEdge>();
     public DbSet<KnowledgeConcept> KnowledgeConcepts => Set<KnowledgeConcept>();
     public DbSet<KnowledgeRelation> KnowledgeRelations => Set<KnowledgeRelation>();
+    public DbSet<StudyTopic> StudyTopics => Set<StudyTopic>();
     public DbSet<StudySession> StudySessions => Set<StudySession>();
     public DbSet<Flashcard> Flashcards => Set<Flashcard>();
     public DbSet<Quiz> Quizzes => Set<Quiz>();
     public DbSet<QuizQuestion> QuizQuestions => Set<QuizQuestion>();
     public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
+    public DbSet<QuizAnswer> QuizAnswers => Set<QuizAnswer>();
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<SourceReference> SourceReferences => Set<SourceReference>();

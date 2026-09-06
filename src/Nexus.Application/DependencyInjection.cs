@@ -31,6 +31,15 @@ public static class DependencyInjection
         services.AddScoped<Nexus.Application.Features.Conversations.Services.IConversationService, Nexus.Application.Features.Conversations.Services.ConversationService>();
         services.AddScoped<Nexus.Application.Features.AI.Services.IAiKnowledgeService, Nexus.Application.Features.AI.Services.AiKnowledgeService>();
 
+        // Phase 6 Study Engine & AI Tutor
+        services.AddScoped<Nexus.Application.Features.Study.Services.ISpacedRepetitionService, Nexus.Application.Features.Study.Services.SpacedRepetitionService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IStudyTopicService, Nexus.Application.Features.Study.Services.StudyTopicService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IStudySessionService, Nexus.Application.Features.Study.Services.StudySessionService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IFlashcardService, Nexus.Application.Features.Study.Services.FlashcardService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IQuizService, Nexus.Application.Features.Study.Services.QuizService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IKnowledgeAssessmentService, Nexus.Application.Features.Study.Services.KnowledgeAssessmentService>();
+        services.AddScoped<Nexus.Application.Features.Study.Services.IAiTutorService, Nexus.Application.Features.Study.Services.AiTutorService>();
+
         return services;
     }
 }

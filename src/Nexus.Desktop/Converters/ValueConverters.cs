@@ -107,3 +107,38 @@ public class GreaterThanZeroToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// Compares value to parameter; if equal returns Visible, else Collapsed.
+/// </summary>
+public class EqualityToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value == null && parameter == null) return Visibility.Visible;
+        if (value == null || parameter == null) return Visibility.Collapsed;
+
+        return string.Equals(value.ToString(), parameter.ToString(), StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Compares value to parameter; if equal returns true, else false.
+/// </summary>
+public class EqualityToBooleanConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value == null && parameter == null) return true;
+        if (value == null || parameter == null) return false;
+
+        return string.Equals(value.ToString(), parameter.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
