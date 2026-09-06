@@ -42,6 +42,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<AiConversation> AiConversations => Set<AiConversation>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<SourceReference> SourceReferences => Set<SourceReference>();
+    public DbSet<AiGeneration> AiGenerations => Set<AiGeneration>();
+    public DbSet<AiGenerationSource> AiGenerationSources => Set<AiGenerationSource>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

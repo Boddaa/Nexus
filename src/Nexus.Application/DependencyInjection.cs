@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<Nexus.Application.Features.AI.Services.ICitationValidator, Nexus.Application.Features.AI.Services.CitationValidator>();
         services.AddScoped<Nexus.Application.Common.Interfaces.IRagService, Nexus.Application.Features.AI.Services.RagService>();
         services.AddScoped<Nexus.Application.Features.Conversations.Services.IConversationService, Nexus.Application.Features.Conversations.Services.ConversationService>();
+        services.AddScoped<Nexus.Application.Features.AI.Services.IAiKnowledgeService, Nexus.Application.Features.AI.Services.AiKnowledgeService>();
 
         return services;
     }

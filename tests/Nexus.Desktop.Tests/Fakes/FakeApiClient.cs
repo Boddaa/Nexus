@@ -4,6 +4,8 @@ using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
 using Nexus.Application.DTOs.Search;
 using Nexus.Application.DTOs.Workspaces;
+using Nexus.Application.DTOs.AI;
+using Nexus.Application.DTOs.Conversations;
 using Nexus.Desktop.Services;
 using Nexus.Domain.Common;
 
@@ -486,4 +488,148 @@ public class FakeApiClient : IApiClient
         Conversations.RemoveAll(c => c.Id == conversationId);
         return Task.FromResult(Result.Success(true));
     }
+
+    // Knowledge Intelligence & AI Workflows
+    public List<AiOperationResultDto> AiGenerations { get; set; } = new();
+
+    public Task<Result<AiOperationResultDto>> SummarizeAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var result = new AiOperationResultDto(
+            Guid.NewGuid(),
+            "Summarize",
+            "Summary result for selected sources.",
+            null,
+            null,
+            new List<ChatSourceDto> { new(Guid.NewGuid(), Guid.NewGuid(), null, null, null, "Source 1", "Document", 0.9, 1, "Snippet") },
+            "gpt-4o-mini",
+            DateTime.UtcNow);
+        AiGenerations.Insert(0, result);
+        return Task.FromResult(Result.Success(result));
+    }
+
+    public Task<Result<AiOperationResultDto>> ExplainAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var result = new AiOperationResultDto(
+            Guid.NewGuid(),
+            "Explain",
+            "Explanation: " + (request.AdditionalInstructions ?? "General concept explanation."),
+            null,
+            null,
+            new List<ChatSourceDto>(),
+            "gpt-4o-mini",
+            DateTime.UtcNow);
+        AiGenerations.Insert(0, result);
+        return Task.FromResult(Result.Success(result));
+    }
+
+    public Task<Result<AiOperationResultDto>> ExtractKeyPointsAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var result = new AiOperationResultDto(
+            Guid.NewGuid(),
+            "KeyPoints",
+            "• Key point 1\n• Key point 2\n• Key point 3",
+            new List<string> { "Key point 1", "Key point 2", "Key point 3" },
+            null,
+            new List<ChatSourceDto>(),
+            "gpt-4o-mini",
+            DateTime.UtcNow);
+        AiGenerations.Insert(0, result);
+        return Task.FromResult(Result.Success(result));
+    }
+
+    public Task<Result<AiOperationResultDto>> GenerateQuestionsAsync(Guid workspaceId, GenerateQuestionsRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var questions = new List<GeneratedQuestionDto>
+        {
+            new(Guid.NewGuid(), "What is the core idea?", "Intermediate", "Explanation for A", new List<ChatSourceDto>())
+        };
+        var result = new AiOperationResultDto(
+            Guid.NewGuid(),
+            "Questions",
+            "Generated questions.",
+            null,
+            questions,
+            new List<ChatSourceDto>(),
+            "gpt-4o-mini",
+            DateTime.UtcNow);
+        AiGenerations.Insert(0, result);
+        return Task.FromResult(Result.Success(result));
+    }
+
+    public Task<Result<AiOperationResultDto>> GenerateStudyMaterialAsync(Guid workspaceId, GenerateStudyMaterialRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var result = new AiOperationResultDto(
+            Guid.NewGuid(),
+            "StudyMaterial",
+            "# Study Guide\n\nStudy material content.",
+            null,
+            null,
+            new List<ChatSourceDto>(),
+            "gpt-4o-mini",
+            DateTime.UtcNow);
+        AiGenerations.Insert(0, result);
+        return Task.FromResult(Result.Success(result));
+    }
+
+    public Task<Result<NoteDto>> SaveAiOutputAsNoteAsync(Guid workspaceId, SaveAiOutputAsNoteRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<NoteDto>(FailureError));
+        var gen = AiGenerations.FirstOrDefault(g => g.Id == request.AiGenerationId);
+        var content = gen?.Content ?? "Generated content";
+        var note = new NoteDto(
+            Guid.NewGuid(),
+            workspaceId,
+            request.PageId,
+            null,
+            request.Title,
+            content,
+            "markdown",
+            false,
+            DateTime.UtcNow,
+            null,
+            new List<string> { "ai-generated" });
+        Notes.Add(note);
+        NoteSummaries.Add(new NoteSummaryDto(
+            note.Id, workspaceId, note.PageId, null, note.Title,
+            note.Content.Length > 50 ? note.Content[..50] : note.Content,
+            note.ContentType, false, note.CreatedAtUtc, null, note.Tags));
+        return Task.FromResult(Result.Success(note));
+    }
+
+    public Task<Result<IReadOnlyList<AiGenerationSummaryDto>>> GetAiGenerationsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<AiGenerationSummaryDto>>(FailureError));
+        var summaries = AiGenerations
+            .Select(g => new AiGenerationSummaryDto(
+                g.Id,
+                g.Operation,
+                g.Content.Length > 80 ? g.Content[..80] : g.Content,
+                "Document",
+                Guid.NewGuid(),
+                g.Model,
+                g.CreatedAtUtc))
+            .ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<AiGenerationSummaryDto>>(summaries));
+    }
+
+    public Task<Result<AiOperationResultDto>> GetAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<AiOperationResultDto>(FailureError));
+        var gen = AiGenerations.FirstOrDefault(g => g.Id == generationId);
+        if (gen == null) return Task.FromResult(Result.Failure<AiOperationResultDto>(new Error("AiGeneration.NotFound", "Not found.")));
+        return Task.FromResult(Result.Success(gen));
+    }
+
+    public Task<Result<bool>> DeleteAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<bool>(FailureError));
+        AiGenerations.RemoveAll(g => g.Id == generationId);
+        return Task.FromResult(Result.Success(true));
+    }
 }
+

@@ -82,3 +82,61 @@ public class SourceReferenceConfiguration : IEntityTypeConfiguration<SourceRefer
         builder.HasQueryFilter(s => !s.IsDeleted);
     }
 }
+
+public class AiGenerationConfiguration : IEntityTypeConfiguration<AiGeneration>
+{
+    public void Configure(EntityTypeBuilder<AiGeneration> builder)
+    {
+        builder.ToTable("AiGenerations");
+
+        builder.HasKey(g => g.Id);
+
+        builder.Property(g => g.Operation)
+            .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(g => g.Content)
+            .IsRequired();
+
+        builder.Property(g => g.Model)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.HasMany(g => g.Sources)
+            .WithOne(s => s.AiGeneration)
+            .HasForeignKey(s => s.AiGenerationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(g => g.Workspace)
+            .WithMany()
+            .HasForeignKey(g => g.WorkspaceId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(g => new { g.WorkspaceId, g.UserId, g.CreatedAtUtc });
+        builder.HasIndex(g => new { g.WorkspaceId, g.Operation });
+
+        builder.HasQueryFilter(g => !g.IsDeleted);
+    }
+}
+
+public class AiGenerationSourceConfiguration : IEntityTypeConfiguration<AiGenerationSource>
+{
+    public void Configure(EntityTypeBuilder<AiGenerationSource> builder)
+    {
+        builder.ToTable("AiGenerationSources");
+
+        builder.HasKey(s => s.Id);
+
+        builder.Property(s => s.Title)
+            .HasMaxLength(250);
+
+        builder.HasOne(s => s.DocumentChunk)
+            .WithMany()
+            .HasForeignKey(s => s.DocumentChunkId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(s => s.AiGenerationId);
+
+        builder.HasQueryFilter(s => !s.IsDeleted);
+    }
+}

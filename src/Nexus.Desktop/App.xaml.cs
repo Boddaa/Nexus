@@ -46,6 +46,7 @@ public partial class App : System.Windows.Application
         services.AddTransient<BoardsViewModel>();
         services.AddTransient<MindMapsViewModel>();
         services.AddTransient<StudyViewModel>();
+        services.AddTransient<AiOperationViewModel>();
         services.AddTransient<SearchViewModel>();
         services.AddTransient<AiAssistantViewModel>();
 

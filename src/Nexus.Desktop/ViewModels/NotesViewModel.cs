@@ -85,11 +85,18 @@ public partial class NotesViewModel : ViewModelBase
     [ObservableProperty]
     private string? _errorMessage;
 
-    public NotesViewModel(IApiClient apiClient, IDialogService dialogService, UserSession userSession)
+    private readonly INavigationService? _navigationService;
+
+    public NotesViewModel(
+        IApiClient apiClient,
+        IDialogService dialogService,
+        UserSession userSession,
+        INavigationService? navigationService = null)
     {
         _apiClient = apiClient;
         _dialogService = dialogService;
         _userSession = userSession;
+        _navigationService = navigationService;
 
         if (_userSession.SelectedWorkspace != null)
         {
@@ -535,5 +542,21 @@ public partial class NotesViewModel : ViewModelBase
                 CurrentNoteTags = string.Join(", ", result.Value.Tags);
             }
         }
+    }
+
+    [RelayCommand]
+    public void RunAiOperationOnNote(string operation)
+    {
+        if (SelectedNote == null && !CurrentNoteId.HasValue) return;
+        var noteId = CurrentNoteId ?? SelectedNote!.Id;
+        var noteTitle = string.IsNullOrWhiteSpace(CurrentNoteTitle) ? (SelectedNote?.Title ?? "Note") : CurrentNoteTitle;
+
+        _userSession.PendingAiTarget = new AiWorkflowTarget(
+            "Note",
+            noteId,
+            noteTitle,
+            operation);
+
+        _navigationService?.NavigateTo<StudyViewModel>();
     }
 }

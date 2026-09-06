@@ -214,6 +214,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -309,8 +310,26 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- AI Intelligence Quick Actions -->
+                    <Border Grid.Row="3" Background="{StaticResource BgDarkBrush}" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1" CornerRadius="8" Padding="10,6" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🧠 AI WORKFLOWS:" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Button Content="✨ Summarize" Command="{Binding RunAiOperationOnNoteCommand}" CommandParameter="Summarize" Style="{StaticResource SecondaryButton}" Padding="8,4" Margin="0,0,6,0" />
+                                <Button Content="💡 Explain" Command="{Binding RunAiOperationOnNoteCommand}" CommandParameter="Explain" Style="{StaticResource SecondaryButton}" Padding="8,4" Margin="0,0,6,0" />
+                                <Button Content="📌 Key Points" Command="{Binding RunAiOperationOnNoteCommand}" CommandParameter="Extract Key Points" Style="{StaticResource SecondaryButton}" Padding="8,4" Margin="0,0,6,0" />
+                                <Button Content="❓ Quiz" Command="{Binding RunAiOperationOnNoteCommand}" CommandParameter="Generate Questions" Style="{StaticResource SecondaryButton}" Padding="8,4" Margin="0,0,6,0" />
+                                <Button Content="🎓 Study Guide" Command="{Binding RunAiOperationOnNoteCommand}" CommandParameter="Study Material" Style="{StaticResource SecondaryButton}" Padding="8,4" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+
                     <!-- Markdown Note Content Editor -->
-                    <Border Grid.Row="3" Background="{StaticResource BgInputBrush}" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1" CornerRadius="8">
+                    <Border Grid.Row="4" Background="{StaticResource BgInputBrush}" BorderBrush="{StaticResource BorderLightBrush}" BorderThickness="1" CornerRadius="8">
                         <TextBox Text="{Binding CurrentNoteContent, UpdateSourceTrigger=PropertyChanged}"
                                  AcceptsReturn="True"
                                  TextWrapping="Wrap"

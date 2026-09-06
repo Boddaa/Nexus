@@ -95,11 +95,18 @@ public partial class PagesViewModel : ViewModelBase
     [ObservableProperty]
     private int _moveNewOrderIndex;
 
-    public PagesViewModel(IApiClient apiClient, IDialogService dialogService, UserSession userSession)
+    private readonly INavigationService? _navigationService;
+
+    public PagesViewModel(
+        IApiClient apiClient,
+        IDialogService dialogService,
+        UserSession userSession,
+        INavigationService? navigationService = null)
     {
         _apiClient = apiClient;
         _dialogService = dialogService;
         _userSession = userSession;
+        _navigationService = navigationService;
 
         if (_userSession.SelectedWorkspace != null)
         {
@@ -532,5 +539,18 @@ public partial class PagesViewModel : ViewModelBase
                 NotesCount = result.Value.NotesCount;
             }
         }
+    }
+
+    [RelayCommand]
+    public void RunAiOperationOnPage(string operation)
+    {
+        if (SelectedPage == null) return;
+        _userSession.PendingAiTarget = new AiWorkflowTarget(
+            "Page",
+            SelectedPage.Id,
+            SelectedPage.Title,
+            operation);
+
+        _navigationService?.NavigateTo<StudyViewModel>();
     }
 }

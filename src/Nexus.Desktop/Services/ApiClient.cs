@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Nexus.Application.DTOs.AI;
 using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.Conversations;
 using Nexus.Application.DTOs.Documents;
@@ -62,6 +63,17 @@ public interface IApiClient
     Task<Result<SendChatMessageResponse>> SendChatMessageAsync(Guid workspaceId, Guid conversationId, SendChatMessageRequest request, CancellationToken cancellationToken = default);
     Task<Result<bool>> ArchiveConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
     Task<Result<bool>> DeleteConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
+
+    // Knowledge Intelligence & AI Workflows
+    Task<Result<AiOperationResultDto>> SummarizeAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AiOperationResultDto>> ExplainAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AiOperationResultDto>> ExtractKeyPointsAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AiOperationResultDto>> GenerateQuestionsAsync(Guid workspaceId, GenerateQuestionsRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AiOperationResultDto>> GenerateStudyMaterialAsync(Guid workspaceId, GenerateStudyMaterialRequest request, CancellationToken cancellationToken = default);
+    Task<Result<NoteDto>> SaveAiOutputAsNoteAsync(Guid workspaceId, SaveAiOutputAsNoteRequest request, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<AiGenerationSummaryDto>>> GetAiGenerationsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<Result<AiOperationResultDto>> GetAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default);
+    Task<Result<bool>> DeleteAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -867,6 +879,125 @@ public class ApiClient : IApiClient
         catch (Exception ex)
         {
             return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<AiOperationResultDto>> SummarizeAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        return await PostAiOperationAsync($"api/workspaces/{workspaceId}/ai/summarize", request, cancellationToken);
+    }
+
+    public async Task<Result<AiOperationResultDto>> ExplainAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        return await PostAiOperationAsync($"api/workspaces/{workspaceId}/ai/explain", request, cancellationToken);
+    }
+
+    public async Task<Result<AiOperationResultDto>> ExtractKeyPointsAsync(Guid workspaceId, AiKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        return await PostAiOperationAsync($"api/workspaces/{workspaceId}/ai/key-points", request, cancellationToken);
+    }
+
+    public async Task<Result<AiOperationResultDto>> GenerateQuestionsAsync(Guid workspaceId, GenerateQuestionsRequest request, CancellationToken cancellationToken = default)
+    {
+        return await PostAiOperationAsync($"api/workspaces/{workspaceId}/ai/questions", request, cancellationToken);
+    }
+
+    public async Task<Result<AiOperationResultDto>> GenerateStudyMaterialAsync(Guid workspaceId, GenerateStudyMaterialRequest request, CancellationToken cancellationToken = default)
+    {
+        return await PostAiOperationAsync($"api/workspaces/{workspaceId}/ai/study-material", request, cancellationToken);
+    }
+
+    public async Task<Result<NoteDto>> SaveAiOutputAsNoteAsync(Guid workspaceId, SaveAiOutputAsNoteRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/ai/save-as-note", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var note = await response.Content.ReadFromJsonAsync<NoteDto>(_jsonOptions, cancellationToken);
+                return Result.Success(note!);
+            }
+            return await ExtractErrorAsync<NoteDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<NoteDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<AiGenerationSummaryDto>>> GetAiGenerationsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/ai/generations", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var list = await response.Content.ReadFromJsonAsync<List<AiGenerationSummaryDto>>(_jsonOptions, cancellationToken);
+                return Result.Success<IReadOnlyList<AiGenerationSummaryDto>>(list ?? new List<AiGenerationSummaryDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<AiGenerationSummaryDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<AiGenerationSummaryDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<AiOperationResultDto>> GetAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/ai/generations/{generationId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<AiOperationResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<AiOperationResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<AiOperationResultDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> DeleteAiGenerationAsync(Guid workspaceId, Guid generationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/ai/generations/{generationId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    private async Task<Result<AiOperationResultDto>> PostAiOperationAsync<TReq>(string url, TReq request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AiOperationResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(result!);
+            }
+            return await ExtractErrorAsync<AiOperationResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<AiOperationResultDto>(new Error("Network.Error", ex.Message));
         }
     }
 

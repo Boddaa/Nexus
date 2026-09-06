@@ -53,3 +53,50 @@ public class SourceReference : AuditableEntity
     public SourceReference() { }
     public SourceReference(Guid id) { Id = id; }
 }
+
+public class AiGeneration : AuditableEntity
+{
+    public Guid WorkspaceId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid? SourceDocumentId { get; set; }
+    public Guid? SourcePageId { get; set; }
+    public Guid? SourceNoteId { get; set; }
+    public Guid? ConversationId { get; set; }
+    public string Operation { get; set; } = string.Empty; // "Summarize", "Explain", "KeyPoints", "Questions", "StudyMaterial"
+    public string Content { get; set; } = string.Empty;
+    public string? StructuredContentJson { get; set; }
+    public string Model { get; set; } = string.Empty;
+
+    public Workspace Workspace { get; set; } = null!;
+    public User User { get; set; } = null!;
+    public Document? SourceDocument { get; set; }
+    public Page? SourcePage { get; set; }
+    public Note? SourceNote { get; set; }
+    public AiConversation? Conversation { get; set; }
+    public ICollection<AiGenerationSource> Sources { get; set; } = new List<AiGenerationSource>();
+
+    public AiGeneration() { }
+    public AiGeneration(Guid id) { Id = id; }
+}
+
+public class AiGenerationSource : AuditableEntity
+{
+    public Guid AiGenerationId { get; set; }
+    public Guid? DocumentId { get; set; }
+    public Guid? DocumentChunkId { get; set; }
+    public Guid? PageId { get; set; }
+    public Guid? NoteId { get; set; }
+    public double RelevanceScore { get; set; } = 1.0;
+    public string? Title { get; set; }
+    public string? Snippet { get; set; }
+    public int? PageNumber { get; set; }
+
+    public AiGeneration AiGeneration { get; set; } = null!;
+    public Document? Document { get; set; }
+    public DocumentChunk? DocumentChunk { get; set; }
+    public Page? Page { get; set; }
+    public Note? Note { get; set; }
+
+    public AiGenerationSource() { }
+    public AiGenerationSource(Guid id) { Id = id; }
+}

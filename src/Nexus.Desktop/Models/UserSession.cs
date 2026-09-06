@@ -9,4 +9,13 @@ public class UserSession
     public WorkspaceDto? SelectedWorkspace { get; set; }
     public Guid CurrentWorkspaceId => SelectedWorkspace?.Id ?? Guid.Empty;
     public bool IsAuthenticated => CurrentUser != null && !string.IsNullOrWhiteSpace(CurrentUser.Token);
+    public AiWorkflowTarget? PendingAiTarget { get; set; }
 }
+
+public record AiWorkflowTarget(
+    string SourceType,
+    Guid SourceId,
+    string SourceTitle,
+    string? RequestedOperation = null,
+    string? InitialInstructions = null
+);

@@ -86,15 +86,15 @@ public partial class MindMapsViewModel : ViewModelBase
     }
 }
 
-public partial class StudyViewModel : ViewModelBase
+public partial class StudyViewModel : AiOperationViewModel
 {
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _studyTopic = "Current Review Topics";
-
-    public StudyViewModel(UserSession userSession)
+    public StudyViewModel(
+        IApiClient apiClient,
+        IDialogService dialogService,
+        INavigationService navigationService,
+        UserSession userSession)
+        : base(apiClient, dialogService, navigationService, userSession)
     {
-        _userSession = userSession;
     }
 }
+

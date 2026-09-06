@@ -30,6 +30,8 @@ public interface IAppDbContext
     DbSet<AiConversation> AiConversations { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<SourceReference> SourceReferences { get; }
+    DbSet<AiGeneration> AiGenerations { get; }
+    DbSet<AiGenerationSource> AiGenerationSources { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

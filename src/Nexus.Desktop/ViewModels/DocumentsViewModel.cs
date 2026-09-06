@@ -61,16 +61,20 @@ public partial class DocumentsViewModel : ViewModelBase
     [ObservableProperty]
     private string? _errorMessage;
 
+    private readonly INavigationService? _navigationService;
+
     public DocumentsViewModel(
         IApiClient apiClient,
         IDialogService dialogService,
         IFilePickerService filePickerService,
-        UserSession userSession)
+        UserSession userSession,
+        INavigationService? navigationService = null)
     {
         _apiClient = apiClient;
         _dialogService = dialogService;
         _filePickerService = filePickerService;
         _userSession = userSession;
+        _navigationService = navigationService;
 
         if (_userSession.SelectedWorkspace != null)
         {
@@ -401,5 +405,18 @@ public partial class DocumentsViewModel : ViewModelBase
                 HasSelectedDocument = true;
             }
         }
+    }
+
+    [RelayCommand]
+    public void RunAiOperationOnDocument(string operation)
+    {
+        if (SelectedDocument == null) return;
+        _userSession.PendingAiTarget = new AiWorkflowTarget(
+            "Document",
+            SelectedDocument.Id,
+            SelectedDocument.FileName,
+            operation);
+
+        _navigationService?.NavigateTo<StudyViewModel>();
     }
 }

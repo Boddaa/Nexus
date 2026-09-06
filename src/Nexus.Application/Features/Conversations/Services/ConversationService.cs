@@ -16,7 +16,9 @@ public class ConversationService : IConversationService
     private readonly IAppDbContext _context;
     private readonly ICurrentUserService _currentUserService;
     private readonly IRagService _ragService;
+    private readonly ILLMService? _llmService;
     private readonly RagOptions _ragOptions;
+    private readonly AiKnowledgeOptions _knowledgeOptions;
     private readonly ILogger<ConversationService> _logger;
 
     public ConversationService(
@@ -24,12 +26,16 @@ public class ConversationService : IConversationService
         ICurrentUserService currentUserService,
         IRagService ragService,
         IOptions<RagOptions> ragOptions,
-        ILogger<ConversationService> logger)
+        ILogger<ConversationService> logger,
+        ILLMService? llmService = null,
+        IOptions<AiKnowledgeOptions>? knowledgeOptions = null)
     {
         _context = context;
         _currentUserService = currentUserService;
         _ragService = ragService;
+        _llmService = llmService;
         _ragOptions = ragOptions?.Value ?? new RagOptions();
+        _knowledgeOptions = knowledgeOptions?.Value ?? new AiKnowledgeOptions();
         _logger = logger;
     }
 
@@ -347,10 +353,45 @@ public class ConversationService : IConversationService
         // Auto-generate title if it's the first message or still default
         if (conversation.Title == "New Conversation" && !string.IsNullOrWhiteSpace(userMessage.Content))
         {
-            var cleanText = userMessage.Content.Length > 40
+            var fallbackTitle = userMessage.Content.Length > 40
                 ? userMessage.Content.Substring(0, 37) + "..."
                 : userMessage.Content;
-            conversation.Title = cleanText;
+
+            conversation.Title = fallbackTitle;
+
+            if (_llmService != null && (_knowledgeOptions?.EnableTitleGeneration ?? true))
+            {
+                try
+                {
+                    var titleRequest = new LLMRequest(
+                        Messages: new[]
+                        {
+                            new LLMChatMessage("user", $"Generate a short, concise conversation title (3 to 6 words, maximum 50 characters, no quotes, no markdown, no trailing period) summarizing this question:\n{userMessage.Content}")
+                        },
+                        SystemPrompt: "You are a concise title generator. Respond ONLY with the title text.",
+                        Temperature: 0.3,
+                        MaxTokens: 30);
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    var titleResponse = await _llmService.ChatAsync(titleRequest, cts.Token);
+                    var cleanTitle = titleResponse.Content?
+                        .Replace("\"", "")
+                        .Replace("'", "")
+                        .Replace("\n", " ")
+                        .Replace("\r", "")
+                        .Trim()
+                        .TrimEnd('.');
+
+                    if (!string.IsNullOrWhiteSpace(cleanTitle) && cleanTitle.Length <= (_knowledgeOptions?.MaxTitleLength ?? 60))
+                    {
+                        conversation.Title = cleanTitle;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Best-effort LLM title generation failed, using fallback title: {FallbackTitle}", fallbackTitle);
+                }
+            }
         }
 
         conversation.UpdatedAtUtc = DateTime.UtcNow;
