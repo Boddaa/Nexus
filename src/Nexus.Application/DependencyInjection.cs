@@ -40,6 +40,12 @@ public static class DependencyInjection
         services.AddScoped<Nexus.Application.Features.Study.Services.IKnowledgeAssessmentService, Nexus.Application.Features.Study.Services.KnowledgeAssessmentService>();
         services.AddScoped<Nexus.Application.Features.Study.Services.IAiTutorService, Nexus.Application.Features.Study.Services.AiTutorService>();
 
+        // Phase 7 Visual Thinking & Knowledge Canvas
+        services.AddScoped<Nexus.Application.Features.VisualThinking.Services.IBoardService, Nexus.Application.Features.VisualThinking.Services.BoardService>();
+        services.AddScoped<Nexus.Application.Features.VisualThinking.Services.IMindMapService, Nexus.Application.Features.VisualThinking.Services.MindMapService>();
+        services.AddScoped<Nexus.Application.Features.VisualThinking.Services.IAutoLayoutService, Nexus.Application.Features.VisualThinking.Services.AutoLayoutService>();
+        services.AddScoped<Nexus.Application.Features.VisualThinking.Services.IAiMindMapService, Nexus.Application.Features.VisualThinking.Services.AiMindMapService>();
+
         return services;
     }
 }

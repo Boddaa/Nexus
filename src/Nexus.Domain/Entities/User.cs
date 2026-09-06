@@ -18,4 +18,6 @@ public class User : AuditableEntity
     public ICollection<Flashcard> Flashcards { get; set; } = new List<Flashcard>();
     public ICollection<Quiz> Quizzes { get; set; } = new List<Quiz>();
     public ICollection<QuizAttempt> QuizAttempts { get; set; } = new List<QuizAttempt>();
+    public ICollection<Board> Boards { get; set; } = new List<Board>();
+    public ICollection<MindMap> MindMaps { get; set; } = new List<MindMap>();
 }

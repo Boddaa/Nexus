@@ -14,10 +14,21 @@ public class MindMapConfiguration : IEntityTypeConfiguration<MindMap>
 
         builder.Property(m => m.Title)
             .IsRequired()
-            .HasMaxLength(150);
+            .HasMaxLength(200);
 
         builder.Property(m => m.Description)
-            .HasMaxLength(500);
+            .HasMaxLength(1000);
+
+        builder.HasOne(m => m.Workspace)
+            .WithMany(w => w.MindMaps)
+            .HasForeignKey(m => m.WorkspaceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(m => m.User)
+            .WithMany(u => u.MindMaps)
+            .HasForeignKey(m => m.UserId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(m => m.Nodes)
             .WithOne(n => n.MindMap)
@@ -28,6 +39,9 @@ public class MindMapConfiguration : IEntityTypeConfiguration<MindMap>
             .WithOne(e => e.MindMap)
             .HasForeignKey(e => e.MindMapId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(m => new { m.WorkspaceId, m.IsDeleted });
+        builder.HasIndex(m => new { m.WorkspaceId, m.UserId, m.IsDeleted });
 
         builder.HasQueryFilter(m => !m.IsDeleted);
     }
@@ -41,15 +55,19 @@ public class MindMapNodeConfiguration : IEntityTypeConfiguration<MindMapNode>
 
         builder.HasKey(n => n.Id);
 
+        // Ignore computed helpers so EF maps PositionX/PositionY directly
+        builder.Ignore(n => n.X);
+        builder.Ignore(n => n.Y);
+
         builder.Property(n => n.Title)
             .IsRequired()
-            .HasMaxLength(150);
+            .HasMaxLength(200);
 
         builder.Property(n => n.Description)
-            .HasMaxLength(500);
+            .HasMaxLength(2000);
 
         builder.Property(n => n.ColorHex)
-            .HasMaxLength(20);
+            .HasMaxLength(30);
 
         builder.Property(n => n.Shape)
             .HasMaxLength(50);
@@ -61,6 +79,9 @@ public class MindMapNodeConfiguration : IEntityTypeConfiguration<MindMapNode>
             .WithMany(p => p.Children)
             .HasForeignKey(n => n.ParentNodeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(n => new { n.MindMapId, n.IsDeleted });
+        builder.HasIndex(n => new { n.LinkedEntityType, n.LinkedEntityId });
 
         builder.HasQueryFilter(n => !n.IsDeleted);
     }
@@ -75,7 +96,7 @@ public class MindMapEdgeConfiguration : IEntityTypeConfiguration<MindMapEdge>
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.Label)
-            .HasMaxLength(100);
+            .HasMaxLength(500);
 
         builder.Property(e => e.RelationType)
             .HasMaxLength(50);
@@ -92,6 +113,9 @@ public class MindMapEdgeConfiguration : IEntityTypeConfiguration<MindMapEdge>
             .WithMany(n => n.TargetEdges)
             .HasForeignKey(e => e.TargetNodeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => new { e.MindMapId, e.IsDeleted });
+        builder.HasIndex(e => new { e.SourceNodeId, e.TargetNodeId });
 
         builder.HasQueryFilter(e => !e.IsDeleted);
     }

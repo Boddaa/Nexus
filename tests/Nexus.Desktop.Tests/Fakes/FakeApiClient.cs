@@ -7,6 +7,7 @@ using Nexus.Application.DTOs.Workspaces;
 using Nexus.Application.DTOs.AI;
 using Nexus.Application.DTOs.Conversations;
 using Nexus.Application.DTOs.Study;
+using Nexus.Application.DTOs.VisualThinking;
 using Nexus.Desktop.Services;
 using Nexus.Domain.Common;
 using Nexus.Domain.Enums;
@@ -24,6 +25,11 @@ public class FakeApiClient : IApiClient
     public List<StudySessionDto> StudySessions { get; set; } = new();
     public List<FlashcardDto> Flashcards { get; set; } = new();
     public List<QuizDto> Quizzes { get; set; } = new();
+    public List<BoardDto> Boards { get; set; } = new();
+    public List<BoardItemDto> BoardItems { get; set; } = new();
+    public List<MindMapDto> MindMaps { get; set; } = new();
+    public List<MindMapNodeDto> MindMapNodes { get; set; } = new();
+    public List<MindMapEdgeDto> MindMapEdges { get; set; } = new();
     public List<QuizDetailDto> QuizDetails { get; set; } = new();
     public List<QuizAttemptResultDto> QuizAttempts { get; set; } = new();
 
@@ -892,6 +898,308 @@ public class FakeApiClient : IApiClient
     {
         if (ShouldFail) return Task.FromResult(Result.Failure<TutorMiniExerciseDto>(FailureError));
         return Task.FromResult(Result.Success(new TutorMiniExerciseDto("What is the primary role of this concept?", "MultipleChoice", new[] { "Option A", "Option B" }, "Option A", "Expl")));
+    }
+
+    #endregion
+
+    #region Visual Thinking Fake Implementations
+
+    // Boards
+    public Task<Result<IReadOnlyList<BoardDto>>> GetBoardsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<BoardDto>>(FailureError));
+        var list = Boards.Where(b => b.WorkspaceId == workspaceId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<BoardDto>>(list));
+    }
+
+    public Task<Result<BoardDetailDto>> GetBoardByIdAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<BoardDetailDto>(FailureError));
+        var board = Boards.FirstOrDefault(b => b.Id == boardId && b.WorkspaceId == workspaceId);
+        if (board == null) return Task.FromResult(Result.Failure<BoardDetailDto>(new Error("Board.NotFound", "Board not found.")));
+        var items = BoardItems.Where(i => i.BoardId == boardId).ToList();
+        return Task.FromResult(Result.Success(new BoardDetailDto(board.Id, board.WorkspaceId, board.UserId, board.Title, board.Description, board.Type, items, board.CreatedAtUtc, board.UpdatedAtUtc)));
+    }
+
+    public Task<Result<BoardDto>> CreateBoardAsync(Guid workspaceId, CreateBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<BoardDto>(FailureError));
+        var board = new BoardDto(Guid.NewGuid(), workspaceId, request.IsPersonal ? Guid.NewGuid() : null, request.Title, request.Description, request.Type, 0, DateTime.UtcNow, null);
+        Boards.Insert(0, board);
+        return Task.FromResult(Result.Success(board));
+    }
+
+    public Task<Result<BoardDto>> UpdateBoardAsync(Guid workspaceId, Guid boardId, UpdateBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<BoardDto>(FailureError));
+        var existing = Boards.FirstOrDefault(b => b.Id == boardId && b.WorkspaceId == workspaceId);
+        if (existing == null) return Task.FromResult(Result.Failure<BoardDto>(new Error("Board.NotFound", "Board not found.")));
+        var updated = existing with { Title = request.Title, Description = request.Description, Type = request.Type ?? existing.Type, UpdatedAtUtc = DateTime.UtcNow };
+        Boards.Remove(existing);
+        Boards.Add(updated);
+        return Task.FromResult(Result.Success(updated));
+    }
+
+    public Task<Result> DeleteBoardAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        Boards.RemoveAll(b => b.Id == boardId && b.WorkspaceId == workspaceId);
+        BoardItems.RemoveAll(i => i.BoardId == boardId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<IReadOnlyList<BoardItemDto>>> GetBoardItemsAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<BoardItemDto>>(FailureError));
+        var items = BoardItems.Where(i => i.BoardId == boardId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<BoardItemDto>>(items));
+    }
+
+    public Task<Result<BoardItemDto>> CreateBoardItemAsync(Guid workspaceId, Guid boardId, CreateBoardItemRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<BoardItemDto>(FailureError));
+        var item = new BoardItemDto(Guid.NewGuid(), boardId, request.BoardColumnId, request.Type, request.Title, request.Description, request.Content, request.X, request.Y, request.Width, request.Height, request.Rotation, request.ZIndex, request.ColorHex, request.LinkedEntityType, request.LinkedEntityId, DateTime.UtcNow, null);
+        BoardItems.Add(item);
+        return Task.FromResult(Result.Success(item));
+    }
+
+    public Task<Result<BoardItemDto>> UpdateBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, UpdateBoardItemRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<BoardItemDto>(FailureError));
+        var existing = BoardItems.FirstOrDefault(i => i.Id == itemId && i.BoardId == boardId);
+        if (existing == null) return Task.FromResult(Result.Failure<BoardItemDto>(new Error("BoardItem.NotFound", "Board item not found.")));
+        var updated = existing with
+        {
+            Title = request.Title ?? existing.Title,
+            Description = request.Description ?? existing.Description,
+            Content = request.Content ?? existing.Content,
+            Type = request.Type ?? existing.Type,
+            X = request.X ?? existing.X,
+            Y = request.Y ?? existing.Y,
+            Width = request.Width ?? existing.Width,
+            Height = request.Height ?? existing.Height,
+            Rotation = request.Rotation ?? existing.Rotation,
+            ZIndex = request.ZIndex ?? existing.ZIndex,
+            ColorHex = request.ColorHex ?? existing.ColorHex,
+            LinkedEntityType = request.LinkedEntityType ?? existing.LinkedEntityType,
+            LinkedEntityId = request.LinkedEntityId ?? existing.LinkedEntityId,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        BoardItems.Remove(existing);
+        BoardItems.Add(updated);
+        return Task.FromResult(Result.Success(updated));
+    }
+
+    public Task<Result> DeleteBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        BoardItems.RemoveAll(i => i.Id == itemId && i.BoardId == boardId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<IReadOnlyList<BoardItemDto>>> BatchUpdateBoardItemsAsync(Guid workspaceId, Guid boardId, BatchUpdateBoardItemsRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<BoardItemDto>>(FailureError));
+        var updatedList = new List<BoardItemDto>();
+        foreach (var u in request.Items)
+        {
+            var existing = BoardItems.FirstOrDefault(i => i.Id == u.Id && i.BoardId == boardId);
+            if (existing != null)
+            {
+                var updated = existing with { X = u.X, Y = u.Y, Width = u.Width ?? existing.Width, Height = u.Height ?? existing.Height, Rotation = u.Rotation ?? existing.Rotation, ZIndex = u.ZIndex ?? existing.ZIndex, UpdatedAtUtc = DateTime.UtcNow };
+                BoardItems.Remove(existing);
+                BoardItems.Add(updated);
+                updatedList.Add(updated);
+            }
+        }
+        return Task.FromResult(Result.Success<IReadOnlyList<BoardItemDto>>(updatedList));
+    }
+
+    // Mind Maps
+    public Task<Result<IReadOnlyList<MindMapDto>>> GetMindMapsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<MindMapDto>>(FailureError));
+        var list = MindMaps.Where(m => m.WorkspaceId == workspaceId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<MindMapDto>>(list));
+    }
+
+    public Task<Result<MindMapDetailDto>> GetMindMapByIdAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapDetailDto>(FailureError));
+        var map = MindMaps.FirstOrDefault(m => m.Id == mindMapId && m.WorkspaceId == workspaceId);
+        if (map == null) return Task.FromResult(Result.Failure<MindMapDetailDto>(new Error("MindMap.NotFound", "Mind map not found.")));
+        var nodes = MindMapNodes.Where(n => n.MindMapId == mindMapId).ToList();
+        var edges = MindMapEdges.Where(e => e.MindMapId == mindMapId).ToList();
+        return Task.FromResult(Result.Success(new MindMapDetailDto(map.Id, map.WorkspaceId, map.UserId, map.Title, map.Description, map.RootNodeId, nodes, edges, map.CreatedAtUtc, map.UpdatedAtUtc)));
+    }
+
+    public Task<Result<MindMapDto>> CreateMindMapAsync(Guid workspaceId, CreateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapDto>(FailureError));
+        var map = new MindMapDto(Guid.NewGuid(), workspaceId, request.IsPersonal ? Guid.NewGuid() : null, request.Title, request.Description, null, 0, 0, DateTime.UtcNow, null);
+        MindMaps.Insert(0, map);
+        return Task.FromResult(Result.Success(map));
+    }
+
+    public Task<Result<MindMapDto>> UpdateMindMapAsync(Guid workspaceId, Guid mindMapId, UpdateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapDto>(FailureError));
+        var existing = MindMaps.FirstOrDefault(m => m.Id == mindMapId && m.WorkspaceId == workspaceId);
+        if (existing == null) return Task.FromResult(Result.Failure<MindMapDto>(new Error("MindMap.NotFound", "Mind map not found.")));
+        var updated = existing with { Title = request.Title, Description = request.Description, RootNodeId = request.RootNodeId ?? existing.RootNodeId, UpdatedAtUtc = DateTime.UtcNow };
+        MindMaps.Remove(existing);
+        MindMaps.Add(updated);
+        return Task.FromResult(Result.Success(updated));
+    }
+
+    public Task<Result> DeleteMindMapAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        MindMaps.RemoveAll(m => m.Id == mindMapId && m.WorkspaceId == workspaceId);
+        MindMapNodes.RemoveAll(n => n.MindMapId == mindMapId);
+        MindMapEdges.RemoveAll(e => e.MindMapId == mindMapId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<MindMapNodeDto>> CreateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapNodeDto>(FailureError));
+        var node = new MindMapNodeDto(Guid.NewGuid(), mindMapId, request.ParentNodeId, request.Title, request.Description, request.X, request.Y, request.Width, request.Height, request.ColorHex, request.Shape, request.NodeType, request.LinkedEntityType, request.LinkedEntityId, DateTime.UtcNow, null);
+        MindMapNodes.Add(node);
+        return Task.FromResult(Result.Success(node));
+    }
+
+    public Task<Result<MindMapNodeDto>> UpdateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, UpdateMindMapNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapNodeDto>(FailureError));
+        var existing = MindMapNodes.FirstOrDefault(n => n.Id == nodeId && n.MindMapId == mindMapId);
+        if (existing == null) return Task.FromResult(Result.Failure<MindMapNodeDto>(new Error("MindMapNode.NotFound", "Node not found.")));
+        var updated = existing with
+        {
+            Title = request.Title ?? existing.Title,
+            Description = request.Description ?? existing.Description,
+            ParentNodeId = request.ParentNodeId ?? existing.ParentNodeId,
+            X = request.X ?? existing.X,
+            Y = request.Y ?? existing.Y,
+            Width = request.Width ?? existing.Width,
+            Height = request.Height ?? existing.Height,
+            ColorHex = request.ColorHex ?? existing.ColorHex,
+            Shape = request.Shape ?? existing.Shape,
+            NodeType = request.NodeType ?? existing.NodeType,
+            LinkedEntityType = request.LinkedEntityType ?? existing.LinkedEntityType,
+            LinkedEntityId = request.LinkedEntityId ?? existing.LinkedEntityId,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        MindMapNodes.Remove(existing);
+        MindMapNodes.Add(updated);
+        return Task.FromResult(Result.Success(updated));
+    }
+
+    public Task<Result> DeleteMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        MindMapNodes.RemoveAll(n => n.Id == nodeId && n.MindMapId == mindMapId);
+        MindMapEdges.RemoveAll(e => (e.SourceNodeId == nodeId || e.TargetNodeId == nodeId) && e.MindMapId == mindMapId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<IReadOnlyList<MindMapNodeDto>>> BatchUpdateMindMapNodesAsync(Guid workspaceId, Guid mindMapId, BatchUpdateMindMapNodesRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<MindMapNodeDto>>(FailureError));
+        var updatedList = new List<MindMapNodeDto>();
+        foreach (var u in request.Nodes)
+        {
+            var existing = MindMapNodes.FirstOrDefault(n => n.Id == u.Id && n.MindMapId == mindMapId);
+            if (existing != null)
+            {
+                var updated = existing with { X = u.X, Y = u.Y, Width = u.Width ?? existing.Width, Height = u.Height ?? existing.Height, UpdatedAtUtc = DateTime.UtcNow };
+                MindMapNodes.Remove(existing);
+                MindMapNodes.Add(updated);
+                updatedList.Add(updated);
+            }
+        }
+        return Task.FromResult(Result.Success<IReadOnlyList<MindMapNodeDto>>(updatedList));
+    }
+
+    public Task<Result<MindMapEdgeDto>> CreateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapEdgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapEdgeDto>(FailureError));
+        var edge = new MindMapEdgeDto(Guid.NewGuid(), mindMapId, request.SourceNodeId, request.TargetNodeId, request.Label, request.RelationType, request.Style, request.EdgeType, DateTime.UtcNow, null);
+        MindMapEdges.Add(edge);
+        return Task.FromResult(Result.Success(edge));
+    }
+
+    public Task<Result<MindMapEdgeDto>> UpdateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, UpdateMindMapEdgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<MindMapEdgeDto>(FailureError));
+        var existing = MindMapEdges.FirstOrDefault(e => e.Id == edgeId && e.MindMapId == mindMapId);
+        if (existing == null) return Task.FromResult(Result.Failure<MindMapEdgeDto>(new Error("MindMapEdge.NotFound", "Edge not found.")));
+        var updated = existing with
+        {
+            Label = request.Label ?? existing.Label,
+            RelationType = request.RelationType ?? existing.RelationType,
+            Style = request.Style ?? existing.Style,
+            EdgeType = request.EdgeType ?? existing.EdgeType,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        MindMapEdges.Remove(existing);
+        MindMapEdges.Add(updated);
+        return Task.FromResult(Result.Success(updated));
+    }
+
+    public Task<Result> DeleteMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure(FailureError));
+        MindMapEdges.RemoveAll(e => e.Id == edgeId && e.MindMapId == mindMapId);
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result<LayoutResultDto>> ApplyMindMapLayoutAsync(Guid workspaceId, Guid mindMapId, ApplyLayoutRequest request, bool persist = false, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<LayoutResultDto>(FailureError));
+        var nodes = MindMapNodes.Where(n => n.MindMapId == mindMapId).ToList();
+        var positions = new List<NodePositionDto>();
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            positions.Add(new NodePositionDto(nodes[i].Id, 100 + (i * 150), 150));
+        }
+        return Task.FromResult(Result.Success(new LayoutResultDto(positions)));
+    }
+
+    public Task<Result<NodeKnowledgeContextDto>> GetNodeKnowledgeContextAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<NodeKnowledgeContextDto>(FailureError));
+        var node = MindMapNodes.FirstOrDefault(n => n.Id == nodeId && n.MindMapId == mindMapId);
+        if (node == null) return Task.FromResult(Result.Failure<NodeKnowledgeContextDto>(new Error("MindMapNode.NotFound", "Node not found.")));
+        var dto = new NodeKnowledgeContextDto(node.Id, node.Title, node.LinkedEntityType ?? "Page", node.LinkedEntityId ?? Guid.NewGuid(), $"{node.Title} Details", "Context snippet for linked entity.");
+        return Task.FromResult(Result.Success(dto));
+    }
+
+    public Task<Result<GeneratedMindMapDto>> GenerateMindMapAsync(Guid workspaceId, GenerateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<GeneratedMindMapDto>(FailureError));
+        var map = new MindMapDto(Guid.NewGuid(), workspaceId, null, request.Prompt, "Generated from AI", null, 3, 2, DateTime.UtcNow, null);
+        MindMaps.Insert(0, map);
+        return Task.FromResult(Result.Success(new GeneratedMindMapDto(map.Id, map.Title, 3, 2, Guid.NewGuid())));
+    }
+
+    public Task<Result<NodeExplanationDto>> ExplainNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, ExplainNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<NodeExplanationDto>(FailureError));
+        var node = MindMapNodes.FirstOrDefault(n => n.Id == nodeId);
+        var title = node?.Title ?? "Concept";
+        return Task.FromResult(Result.Success(new NodeExplanationDto(nodeId, title, $"{title} is a fundamental component...", new[] { "Key insight 1", "Key insight 2" }, new[] { "Source reference" })));
+    }
+
+    public Task<Result<RelatedKnowledgeResultDto>> FindRelatedKnowledgeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, FindRelatedKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<RelatedKnowledgeResultDto>(FailureError));
+        var items = new List<RelatedKnowledgeItemDto>
+        {
+            new(Guid.NewGuid(), "Related Architecture Guide", "Document", "Overview of system design...", 0.9),
+            new(Guid.NewGuid(), "Implementation Notes", "Note", "Key trade-offs...", 0.8)
+        };
+        return Task.FromResult(Result.Success(new RelatedKnowledgeResultDto(nodeId, items)));
     }
 
     #endregion

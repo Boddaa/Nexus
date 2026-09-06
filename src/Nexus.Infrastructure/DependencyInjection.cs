@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.Configure<Nexus.Application.Common.Options.HybridSearchOptions>(configuration.GetSection(Nexus.Application.Common.Options.HybridSearchOptions.SectionName));
         services.Configure<Nexus.Application.Common.Options.LlmOptions>(configuration.GetSection(Nexus.Application.Common.Options.LlmOptions.SectionName));
         services.Configure<Nexus.Application.Common.Options.RagOptions>(configuration.GetSection(Nexus.Application.Common.Options.RagOptions.SectionName));
+        services.Configure<Nexus.Application.Common.Options.VisualThinkingOptions>(configuration.GetSection(Nexus.Application.Common.Options.VisualThinkingOptions.SectionName));
 
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();

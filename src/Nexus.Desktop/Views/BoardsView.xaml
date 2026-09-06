@@ -2,74 +2,225 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vm="clr-namespace:Nexus.Desktop.ViewModels"
              mc:Ignorable="d" 
-             d:DesignHeight="600" d:DesignWidth="800">
-    <Grid Margin="25">
+             d:DesignHeight="700" d:DesignWidth="1000"
+             d:DataContext="{d:DesignInstance Type=vm:BoardsViewModel}">
+
+    <Grid Background="{StaticResource BgDarkestBrush}">
         <Grid.RowDefinitions>
+            <!-- Top Action Header -->
             <RowDefinition Height="Auto" />
+            <!-- Main Interactive Canvas Area -->
             <RowDefinition Height="*" />
+            <!-- Status Footer -->
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="📋 Study &amp; Kanban Boards" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
-            <TextBlock Text="Manage learning pipelines, topic masteries, and task items." FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
-        </StackPanel>
+        <!-- Top Header Bar -->
+        <Border Grid.Row="0" Background="{StaticResource BgDarkerBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-        <!-- Board Columns Grid -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="📋" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding Boards}"
+                              SelectedItem="{Binding SelectedBoard}"
+                              DisplayMemberPath="Title"
+                              Width="220"
+                              Style="{StaticResource ModernComboBox}"
+                              VerticalAlignment="Center" Margin="0,0,12,0" />
 
-            <!-- Column 1: TO LEARN -->
-            <Border Grid.Column="0" Background="{StaticResource BgCardBrush}" CornerRadius="8" Padding="14" Margin="0,0,10,0">
-                <StackPanel>
-                    <TextBlock Text="TO LEARN" FontWeight="Bold" Foreground="{StaticResource AccentRoseBrush}" Margin="0,0,0,12" />
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
-                        <TextBlock Text="• Relationships &amp; Foreign Keys" FontSize="13" />
-                    </Border>
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10">
-                        <TextBlock Text="• EF Migrations &amp; CLI" FontSize="13" />
-                    </Border>
+                    <Button Content="➕ New Board" Command="{Binding CreateBoardCommand}" Style="{StaticResource ModernButtonSecondary}" Padding="10,6" Margin="0,0,8,0" />
+                    <Button Content="🗑️ Delete" Command="{Binding DeleteCurrentBoardCommand}" Style="{StaticResource ModernButtonSecondary}" Padding="8,6" />
                 </StackPanel>
+
+                <!-- Center Title & Status -->
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+
+                <!-- Right Quick Links -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="🧠 Switch to Mind Maps" Command="{Binding SwitchToMindMapsCommand}" Style="{StaticResource ModernButtonPrimary}" Padding="12,6" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Canvas Body with Floating Toolbar -->
+        <Grid Grid.Row="1" ClipToBounds="True">
+            <!-- Scrollable / Transformable Visual Canvas -->
+            <Border x:Name="CanvasContainer" Background="#0B0F19"
+                    MouseWheel="OnCanvasMouseWheel"
+                    MouseDown="OnCanvasMouseDown"
+                    MouseMove="OnCanvasMouseMove"
+                    MouseUp="OnCanvasMouseUp">
+                <Canvas x:Name="VisualCanvas">
+                    <Canvas.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="{Binding ZoomLevel}" ScaleY="{Binding ZoomLevel}" />
+                            <TranslateTransform X="{Binding PanX}" Y="{Binding PanY}" />
+                        </TransformGroup>
+                    </Canvas.RenderTransform>
+
+                    <!-- Items Layer -->
+                    <ItemsControl ItemsSource="{Binding CanvasItems}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                <Setter Property="Panel.ZIndex" Value="{Binding ZIndex}" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:CanvasItemViewModel}">
+                                <Border Width="{Binding Width}" Height="{Binding Height}"
+                                        Background="{StaticResource BgCardBrush}"
+                                        BorderBrush="{Binding BorderBrushHex}"
+                                        BorderThickness="2"
+                                        CornerRadius="8"
+                                        Padding="10"
+                                        Cursor="SizeAll"
+                                        MouseDown="OnItemMouseDown"
+                                        MouseMove="OnItemMouseMove"
+                                        MouseUp="OnItemMouseUp">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="12" Direction="270" ShadowDepth="3" Opacity="0.3" Color="#000000" />
+                                    </Border.Effect>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Item Header -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                            <TextBox Grid.Column="1" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                                                     FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"
+                                                     Background="Transparent" BorderThickness="0" />
+                                        </Grid>
+
+                                        <!-- Item Body / Content -->
+                                        <TextBox Grid.Row="1" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                 Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
+                                                 Background="Transparent" BorderThickness="0"
+                                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+
+                                        <!-- Footer: Knowledge Link Indicator -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0"
+                                                    Visibility="{Binding HasKnowledgeLink, Converter={StaticResource BoolToVisConverter}}">
+                                            <Button Style="{StaticResource ModernButtonSecondary}" Padding="6,2" FontSize="11"
+                                                    Command="{Binding DataContext.NavigateToKnowledgeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <TextBlock Text="🔗 Open Knowledge" Foreground="{StaticResource AccentCyanBrush}" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Canvas>
             </Border>
 
-            <!-- Column 2: LEARNING -->
-            <Border Grid.Column="1" Background="{StaticResource BgCardBrush}" CornerRadius="8" Padding="14" Margin="5,0,5,0">
-                <StackPanel>
-                    <TextBlock Text="LEARNING" FontWeight="Bold" Foreground="{StaticResource AccentAmberBrush}" Margin="0,0,0,12" />
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10">
-                        <TextBlock Text="• DbContext Lifetime &amp; DI" FontSize="13" />
-                    </Border>
-                </StackPanel>
-            </Border>
+            <!-- Floating Left Vertical Toolbar -->
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16"
+                    Background="{StaticResource BgDarkerBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="6">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" Direction="270" ShadowDepth="4" Opacity="0.4" Color="#000000" />
+                </Border.Effect>
+                <StackPanel Width="44">
+                    <!-- Tool Selectors -->
+                    <Button ToolTip="Select Tool" Content="👆" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding SetToolCommand}" CommandParameter="Select" />
+                    <Button ToolTip="Pan Tool" Content="✋" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,8"
+                            Command="{Binding SetToolCommand}" CommandParameter="Pan" />
 
-            <!-- Column 3: REVIEW -->
-            <Border Grid.Column="2" Background="{StaticResource BgCardBrush}" CornerRadius="8" Padding="14" Margin="5,0,5,0">
-                <StackPanel>
-                    <TextBlock Text="REVIEW" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" Margin="0,0,0,12" />
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10">
-                        <TextBlock Text="• IQueryable vs IEnumerable" FontSize="13" />
-                    </Border>
-                </StackPanel>
-            </Border>
+                    <Separator Background="{StaticResource BorderSubtleBrush}" Margin="0,0,0,8" />
 
-            <!-- Column 4: MASTERED -->
-            <Border Grid.Column="3" Background="{StaticResource BgCardBrush}" CornerRadius="8" Padding="14" Margin="10,0,0,0">
-                <StackPanel>
-                    <TextBlock Text="MASTERED" FontWeight="Bold" Foreground="{StaticResource AccentEmeraldBrush}" Margin="0,0,0,12" />
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
-                        <TextBlock Text="• SQL Joins &amp; Projections" FontSize="13" />
-                    </Border>
-                    <Border Background="{StaticResource BgHoverBrush}" CornerRadius="6" Padding="10">
-                        <TextBlock Text="• Entity Framework Setup" FontSize="13" />
-                    </Border>
+                    <!-- Add Items -->
+                    <Button ToolTip="Add Sticky Note" Content="📌" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding AddItemCommand}" CommandParameter="StickyNote" />
+                    <Button ToolTip="Add Text Block" Content="📝" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding AddItemCommand}" CommandParameter="Text" />
+                    <Button ToolTip="Add Process Shape" Content="🔷" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding AddItemCommand}" CommandParameter="Shape" />
+                    <Button ToolTip="Add Task Item" Content="✅" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding AddItemCommand}" CommandParameter="Task" />
+                    <Button ToolTip="Add Document Link" Content="📄" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding AddItemCommand}" CommandParameter="Document" />
+                    <Button ToolTip="Add MindMap Link" Content="🧠" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,8"
+                            Command="{Binding AddItemCommand}" CommandParameter="MindMap" />
+
+                    <Separator Background="{StaticResource BorderSubtleBrush}" Margin="0,0,0,8" />
+
+                    <!-- Actions -->
+                    <Button ToolTip="Duplicate Selected" Content="📋" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding DuplicateSelectedItemCommand}" />
+                    <Button ToolTip="Delete Selected" Content="🗑️" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,8"
+                            Command="{Binding DeleteSelectedItemCommand}" />
+
+                    <Separator Background="{StaticResource BorderSubtleBrush}" Margin="0,0,0,8" />
+
+                    <!-- Undo / Redo -->
+                    <Button ToolTip="Undo (Ctrl+Z)" Content="↩️" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding UndoCommand}" />
+                    <Button ToolTip="Redo (Ctrl+Y)" Content="↪️" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,8"
+                            Command="{Binding RedoCommand}" />
+
+                    <Separator Background="{StaticResource BorderSubtleBrush}" Margin="0,0,0,8" />
+
+                    <!-- View Navigation -->
+                    <Button ToolTip="Zoom In" Content="➕" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding ZoomInCommand}" />
+                    <Button ToolTip="Zoom Out" Content="➖" Style="{StaticResource ModernButtonSecondary}" Margin="0,0,0,4"
+                            Command="{Binding ZoomOutCommand}" />
+                    <Button ToolTip="Fit View" Content="🎯" Style="{StaticResource ModernButtonSecondary}"
+                            Command="{Binding FitViewCommand}" />
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- Bottom Footer Status Bar -->
+        <Border Grid.Row="2" Background="{StaticResource BgDarkerBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="16,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Zoom: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock Text="{Binding ZoomPercentageText}" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" FontSize="12" Margin="0,0,16,0" />
+
+                    <TextBlock Text="Items: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock Text="{Binding CanvasItems.Count}" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" Margin="0,0,16,0" />
+
+                    <TextBlock Text="Tool: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock Text="{Binding ActiveTool}" FontWeight="Bold" Foreground="{StaticResource AccentAmberBrush}" FontSize="12" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Reset 100%" Command="{Binding ResetZoomCommand}" Style="{StaticResource ModernButtonSecondary}" Padding="6,2" FontSize="11" Margin="0,0,8,0" />
+                    <Button Content="Fit to Content" Command="{Binding FitViewCommand}" Style="{StaticResource ModernButtonSecondary}" Padding="6,2" FontSize="11" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

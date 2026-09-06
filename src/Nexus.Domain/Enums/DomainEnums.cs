@@ -95,3 +95,47 @@ public enum ReviewRating
     Good = 3,
     Easy = 4
 }
+
+public enum BoardItemType
+{
+    StickyNote = 1,
+    Text = 2,
+    Shape = 3,
+    Document = 4,
+    Note = 5,
+    Page = 6,
+    Task = 7,
+    MindMap = 8,
+    ImagePlaceholder = 9,
+    Group = 10
+}
+
+public enum MindMapNodeType
+{
+    Concept = 1,
+    Document = 2,
+    Note = 3,
+    Page = 4,
+    StudyTopic = 5,
+    Quiz = 6,
+    Flashcard = 7,
+    Custom = 8
+}
+
+public enum MindMapEdgeType
+{
+    RelatesTo = 1,
+    DependsOn = 2,
+    Causes = 3,
+    Contains = 4,
+    Implements = 5,
+    References = 6
+}
+
+public enum AutoLayoutAlgorithm
+{
+    Tree = 1,
+    HorizontalTree = 2,
+    VerticalTree = 3,
+    Radial = 4
+}

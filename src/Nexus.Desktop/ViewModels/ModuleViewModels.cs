@@ -60,29 +60,3 @@ public partial class HomeViewModel : ViewModelBase
     private void GoToStudy() => _navigationService.NavigateTo<StudyViewModel>();
 }
 
-public partial class BoardsViewModel : ViewModelBase
-{
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _boardTitle = "EF Core Study Board";
-
-    public BoardsViewModel(UserSession userSession)
-    {
-        _userSession = userSession;
-    }
-}
-
-public partial class MindMapsViewModel : ViewModelBase
-{
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _mindMapTitle = "Knowledge Graph & Mind Map";
-
-    public MindMapsViewModel(UserSession userSession)
-    {
-        _userSession = userSession;
-    }
-}
-

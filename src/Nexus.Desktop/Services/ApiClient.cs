@@ -11,6 +11,7 @@ using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
 using Nexus.Application.DTOs.Search;
 using Nexus.Application.DTOs.Study;
+using Nexus.Application.DTOs.VisualThinking;
 using Nexus.Application.DTOs.Workspaces;
 using Nexus.Domain.Common;
 
@@ -109,6 +110,41 @@ public interface IApiClient
     Task<Result<TutorHintDto>> TutorHintAsync(Guid workspaceId, TutorHintRequest request, CancellationToken cancellationToken = default);
     Task<Result<TutorExplanationDto>> TutorExplainWrongAsync(Guid workspaceId, TutorExplainWrongAnswerRequest request, CancellationToken cancellationToken = default);
     Task<Result<TutorMiniExerciseDto>> TutorExerciseAsync(Guid workspaceId, TutorMiniExerciseRequest request, CancellationToken cancellationToken = default);
+
+    // Visual Thinking: Boards
+    Task<Result<IReadOnlyList<BoardDto>>> GetBoardsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<Result<BoardDetailDto>> GetBoardByIdAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default);
+    Task<Result<BoardDto>> CreateBoardAsync(Guid workspaceId, CreateBoardRequest request, CancellationToken cancellationToken = default);
+    Task<Result<BoardDto>> UpdateBoardAsync(Guid workspaceId, Guid boardId, UpdateBoardRequest request, CancellationToken cancellationToken = default);
+    Task<Result> DeleteBoardAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<BoardItemDto>>> GetBoardItemsAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default);
+    Task<Result<BoardItemDto>> CreateBoardItemAsync(Guid workspaceId, Guid boardId, CreateBoardItemRequest request, CancellationToken cancellationToken = default);
+    Task<Result<BoardItemDto>> UpdateBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, UpdateBoardItemRequest request, CancellationToken cancellationToken = default);
+    Task<Result> DeleteBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<BoardItemDto>>> BatchUpdateBoardItemsAsync(Guid workspaceId, Guid boardId, BatchUpdateBoardItemsRequest request, CancellationToken cancellationToken = default);
+
+    // Visual Thinking: Mind Maps
+    Task<Result<IReadOnlyList<MindMapDto>>> GetMindMapsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<Result<MindMapDetailDto>> GetMindMapByIdAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default);
+    Task<Result<MindMapDto>> CreateMindMapAsync(Guid workspaceId, CreateMindMapRequest request, CancellationToken cancellationToken = default);
+    Task<Result<MindMapDto>> UpdateMindMapAsync(Guid workspaceId, Guid mindMapId, UpdateMindMapRequest request, CancellationToken cancellationToken = default);
+    Task<Result> DeleteMindMapAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default);
+
+    Task<Result<MindMapNodeDto>> CreateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapNodeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<MindMapNodeDto>> UpdateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, UpdateMindMapNodeRequest request, CancellationToken cancellationToken = default);
+    Task<Result> DeleteMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<MindMapNodeDto>>> BatchUpdateMindMapNodesAsync(Guid workspaceId, Guid mindMapId, BatchUpdateMindMapNodesRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<MindMapEdgeDto>> CreateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapEdgeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<MindMapEdgeDto>> UpdateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, UpdateMindMapEdgeRequest request, CancellationToken cancellationToken = default);
+    Task<Result> DeleteMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, CancellationToken cancellationToken = default);
+
+    Task<Result<LayoutResultDto>> ApplyMindMapLayoutAsync(Guid workspaceId, Guid mindMapId, ApplyLayoutRequest request, bool persist = false, CancellationToken cancellationToken = default);
+    Task<Result<NodeKnowledgeContextDto>> GetNodeKnowledgeContextAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default);
+    Task<Result<GeneratedMindMapDto>> GenerateMindMapAsync(Guid workspaceId, GenerateMindMapRequest request, CancellationToken cancellationToken = default);
+    Task<Result<NodeExplanationDto>> ExplainNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, ExplainNodeRequest request, CancellationToken cancellationToken = default);
+    Task<Result<RelatedKnowledgeResultDto>> FindRelatedKnowledgeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, FindRelatedKnowledgeRequest request, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -1554,6 +1590,520 @@ public class ApiClient : IApiClient
         catch (Exception ex)
         {
             return Result.Failure<TutorMiniExerciseDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    #endregion
+
+    #region Visual Thinking Methods
+
+    // Boards
+    public async Task<Result<IReadOnlyList<BoardDto>>> GetBoardsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/boards", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<IReadOnlyList<BoardDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(items ?? Array.Empty<BoardDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<BoardDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<BoardDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<BoardDetailDto>> GetBoardByIdAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/boards/{boardId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<BoardDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<BoardDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<BoardDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<BoardDto>> CreateBoardAsync(Guid workspaceId, CreateBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/boards", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<BoardDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<BoardDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<BoardDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<BoardDto>> UpdateBoardAsync(Guid workspaceId, Guid boardId, UpdateBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/boards/{boardId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<BoardDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<BoardDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<BoardDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteBoardAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/boards/{boardId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<BoardItemDto>>> GetBoardItemsAsync(Guid workspaceId, Guid boardId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/boards/{boardId}/items", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<IReadOnlyList<BoardItemDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(items ?? Array.Empty<BoardItemDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<BoardItemDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<BoardItemDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<BoardItemDto>> CreateBoardItemAsync(Guid workspaceId, Guid boardId, CreateBoardItemRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/boards/{boardId}/items", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<BoardItemDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<BoardItemDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<BoardItemDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<BoardItemDto>> UpdateBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, UpdateBoardItemRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/boards/{boardId}/items/{itemId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<BoardItemDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<BoardItemDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<BoardItemDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteBoardItemAsync(Guid workspaceId, Guid boardId, Guid itemId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/boards/{boardId}/items/{itemId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<BoardItemDto>>> BatchUpdateBoardItemsAsync(Guid workspaceId, Guid boardId, BatchUpdateBoardItemsRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PatchAsJsonAsync($"api/workspaces/{workspaceId}/boards/{boardId}/items/batch", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<IReadOnlyList<BoardItemDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(items ?? Array.Empty<BoardItemDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<BoardItemDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<BoardItemDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    // Mind Maps
+    public async Task<Result<IReadOnlyList<MindMapDto>>> GetMindMapsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/mindmaps", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<IReadOnlyList<MindMapDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(items ?? Array.Empty<MindMapDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<MindMapDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<MindMapDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapDetailDto>> GetMindMapByIdAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapDetailDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapDetailDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapDetailDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapDto>> CreateMindMapAsync(Guid workspaceId, CreateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapDto>> UpdateMindMapAsync(Guid workspaceId, Guid mindMapId, UpdateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteMindMapAsync(Guid workspaceId, Guid mindMapId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapNodeDto>> CreateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapNodeDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapNodeDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapNodeDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapNodeDto>> UpdateMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, UpdateMindMapNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/{nodeId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapNodeDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapNodeDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapNodeDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteMindMapNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/{nodeId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<MindMapNodeDto>>> BatchUpdateMindMapNodesAsync(Guid workspaceId, Guid mindMapId, BatchUpdateMindMapNodesRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PatchAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/batch", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<IReadOnlyList<MindMapNodeDto>>(_jsonOptions, cancellationToken);
+                return Result.Success(items ?? Array.Empty<MindMapNodeDto>());
+            }
+            return await ExtractErrorAsync<IReadOnlyList<MindMapNodeDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<MindMapNodeDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapEdgeDto>> CreateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, CreateMindMapEdgeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/edges", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapEdgeDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapEdgeDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapEdgeDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<MindMapEdgeDto>> UpdateMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, UpdateMindMapEdgeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PutAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/edges/{edgeId}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<MindMapEdgeDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<MindMapEdgeDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<MindMapEdgeDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result> DeleteMindMapEdgeAsync(Guid workspaceId, Guid mindMapId, Guid edgeId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/edges/{edgeId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success();
+            }
+            return await ExtractErrorAsync(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<LayoutResultDto>> ApplyMindMapLayoutAsync(Guid workspaceId, Guid mindMapId, ApplyLayoutRequest request, bool persist = false, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/layout?persist={persist}", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<LayoutResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<LayoutResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<LayoutResultDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<NodeKnowledgeContextDto>> GetNodeKnowledgeContextAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/{nodeId}/knowledge", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<NodeKnowledgeContextDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<NodeKnowledgeContextDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<NodeKnowledgeContextDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<GeneratedMindMapDto>> GenerateMindMapAsync(Guid workspaceId, GenerateMindMapRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/generate", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<GeneratedMindMapDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<GeneratedMindMapDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<GeneratedMindMapDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<NodeExplanationDto>> ExplainNodeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, ExplainNodeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/{nodeId}/explain", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<NodeExplanationDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<NodeExplanationDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<NodeExplanationDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<RelatedKnowledgeResultDto>> FindRelatedKnowledgeAsync(Guid workspaceId, Guid mindMapId, Guid nodeId, FindRelatedKnowledgeRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/mindmaps/{mindMapId}/nodes/{nodeId}/related-knowledge", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var item = await response.Content.ReadFromJsonAsync<RelatedKnowledgeResultDto>(_jsonOptions, cancellationToken);
+                return Result.Success(item!);
+            }
+            return await ExtractErrorAsync<RelatedKnowledgeResultDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<RelatedKnowledgeResultDto>(new Error("Network.Error", ex.Message));
         }
     }
 
