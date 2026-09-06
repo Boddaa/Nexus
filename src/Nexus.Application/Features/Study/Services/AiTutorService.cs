@@ -117,7 +117,7 @@ public class AiTutorService : IAiTutorService
                 {
                     var topicTitle = await _context.StudyTopics
                         .AsNoTracking()
-                        .Where(t => t.Id == request.StudyTopicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted)
+                        .Where(t => t.Id == request.StudyTopicId.Value && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
                         .Select(t => t.Title)
                         .FirstOrDefaultAsync(cancellationToken);
                     if (!string.IsNullOrWhiteSpace(topicTitle))

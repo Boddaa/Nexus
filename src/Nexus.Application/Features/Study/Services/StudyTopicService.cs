@@ -52,7 +52,7 @@ public class StudyTopicService : IStudyTopicService
 
         var topics = await _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
             .OrderByDescending(t => t.CreatedAtUtc)
             .Select(t => new StudyTopicDto(
                 t.Id,
@@ -91,7 +91,7 @@ public class StudyTopicService : IStudyTopicService
 
         var topic = await _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.Id == topicId && t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.Id == topicId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
             .Select(t => new StudyTopicDto(
                 t.Id,
                 t.WorkspaceId,
@@ -225,7 +225,7 @@ public class StudyTopicService : IStudyTopicService
         var topic = await _context.StudyTopics
             .Include(t => t.Flashcards)
             .Include(t => t.Quizzes)
-            .FirstOrDefaultAsync(t => t.Id == topicId && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(t => t.Id == topicId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
 
         if (topic == null)
         {
@@ -271,7 +271,7 @@ public class StudyTopicService : IStudyTopicService
         }
 
         var topic = await _context.StudyTopics
-            .FirstOrDefaultAsync(t => t.Id == topicId && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(t => t.Id == topicId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
 
         if (topic == null)
         {

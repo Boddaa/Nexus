@@ -294,4 +294,77 @@ public class StudyEndpointsTests : IClassFixture<AiMockWebApplicationFactory>
         Assert.NotNull(fullQuiz);
         Assert.Equal("TopSecretAnswer", fullQuiz.Questions[0].CorrectAnswer);
     }
+
+    [Fact]
+    public async Task StudyEndpoints_CrossUserIsolation_InSharedWorkspace()
+    {
+        var (clientAlice, userAlice, workspaceAlice) = await CreateUserAndWorkspaceAsync("iso_a");
+        var (clientBob, userBob, _) = await CreateUserAndWorkspaceAsync("iso_b");
+
+        // 1. Alice creates topic and flashcard
+        var createTopicRes = await clientAlice.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceAlice.Id}/study/topics",
+            new CreateStudyTopicRequest("Alice Architecture", "Microservices"));
+        Assert.Equal(HttpStatusCode.OK, createTopicRes.StatusCode);
+        var topic = await createTopicRes.Content.ReadFromJsonAsync<StudyTopicDto>();
+        Assert.NotNull(topic);
+
+        var createCardRes = await clientAlice.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceAlice.Id}/study/flashcards?topicId={topic.Id}",
+            new CreateFlashcardRequest("What is SAGAs?", "Distributed transactions", "Medium", null, null, null));
+        Assert.Equal(HttpStatusCode.OK, createCardRes.StatusCode);
+        var card = await createCardRes.Content.ReadFromJsonAsync<FlashcardDto>();
+        Assert.NotNull(card);
+
+        // 2. Add Bob as a member to Alice's workspace
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.WorkspaceMembers.Add(new WorkspaceMember
+            {
+                WorkspaceId = workspaceAlice.Id,
+                UserId = userBob.UserId,
+                Role = WorkspaceRole.Viewer
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // 3. Bob queries Alice's workspace endpoints
+        // Topics list should be empty for Bob
+        var bobTopicsRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/topics");
+        Assert.Equal(HttpStatusCode.OK, bobTopicsRes.StatusCode);
+        var bobTopics = await bobTopicsRes.Content.ReadFromJsonAsync<List<StudyTopicDto>>();
+        Assert.NotNull(bobTopics);
+        Assert.Empty(bobTopics);
+
+        // Bob cannot get Alice's topic by ID
+        var bobGetTopicRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/topics/{topic.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, bobGetTopicRes.StatusCode);
+
+        // Bob cannot update Alice's topic
+        var bobUpdateTopicRes = await clientBob.PutAsJsonAsync(
+            $"/api/workspaces/{workspaceAlice.Id}/study/topics/{topic.Id}",
+            new UpdateStudyTopicRequest("Bob Hijack", "None"));
+        Assert.Equal(HttpStatusCode.NotFound, bobUpdateTopicRes.StatusCode);
+
+        // Bob cannot delete Alice's topic
+        var bobDeleteTopicRes = await clientBob.DeleteAsync($"/api/workspaces/{workspaceAlice.Id}/study/topics/{topic.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, bobDeleteTopicRes.StatusCode);
+
+        // Bob cannot view Alice's flashcards
+        var bobCardsRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/flashcards");
+        Assert.Equal(HttpStatusCode.OK, bobCardsRes.StatusCode);
+        var bobCards = await bobCardsRes.Content.ReadFromJsonAsync<List<FlashcardDto>>();
+        Assert.NotNull(bobCards);
+        Assert.Empty(bobCards);
+
+        // Bob's dashboard shows 0 topics, 0 flashcards
+        var bobDashRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/dashboard");
+        Assert.Equal(HttpStatusCode.OK, bobDashRes.StatusCode);
+        var bobDash = await bobDashRes.Content.ReadFromJsonAsync<StudyDashboardDto>();
+        Assert.NotNull(bobDash);
+        Assert.Equal(0, bobDash.TotalTopics);
+        Assert.Equal(0, bobDash.TotalFlashcards);
+        Assert.Equal(0, bobDash.TotalQuizzes);
+    }
 }

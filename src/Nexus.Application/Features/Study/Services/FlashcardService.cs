@@ -69,7 +69,7 @@ public class FlashcardService : IFlashcardService
 
         var query = _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted);
+            .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -103,7 +103,7 @@ public class FlashcardService : IFlashcardService
         var now = DateTime.UtcNow;
         var query = _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted && f.NextReviewDateUtc <= now);
+            .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted && f.NextReviewDateUtc <= now);
 
         if (topicId.HasValue)
         {
@@ -136,7 +136,7 @@ public class FlashcardService : IFlashcardService
 
         var card = await _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.Id == cardId && f.WorkspaceId == workspaceId && !f.IsDeleted)
+            .Where(f => f.Id == cardId && f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted)
             .Select(f => MapToDto(f))
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -174,7 +174,7 @@ public class FlashcardService : IFlashcardService
         {
             var topicExists = await _context.StudyTopics
                 .AsNoTracking()
-                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
             if (!topicExists)
             {
                 return Result.Failure<FlashcardDto>(new Error("Flashcard.TopicNotFound", "Study topic not found in this workspace."));
@@ -227,7 +227,7 @@ public class FlashcardService : IFlashcardService
         }
 
         var card = await _context.Flashcards
-            .FirstOrDefaultAsync(f => f.Id == cardId && f.WorkspaceId == workspaceId && !f.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(f => f.Id == cardId && f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted, cancellationToken);
 
         if (card == null)
         {
@@ -282,7 +282,7 @@ public class FlashcardService : IFlashcardService
         {
             var topicExists = await _context.StudyTopics
                 .AsNoTracking()
-                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
             if (!topicExists)
             {
                 return Result.Failure<IReadOnlyList<FlashcardDto>>(new Error("Flashcard.TopicNotFound", "Study topic not found."));
@@ -419,7 +419,7 @@ public class FlashcardService : IFlashcardService
         }
 
         var card = await _context.Flashcards
-            .FirstOrDefaultAsync(f => f.Id == cardId && f.WorkspaceId == workspaceId && !f.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(f => f.Id == cardId && f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted, cancellationToken);
 
         if (card == null)
         {
@@ -603,9 +603,10 @@ public class FlashcardService : IFlashcardService
 
         if (sourceType.Equals("Topic", StringComparison.OrdinalIgnoreCase))
         {
+            var currentUserId = _currentUserService.UserId;
             var topic = await _context.StudyTopics
                 .AsNoTracking()
-                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && !t.IsDeleted)
+                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && (!currentUserId.HasValue || t.UserId == currentUserId.Value) && !t.IsDeleted)
                 .Select(t => new { t.Id, t.Title, t.Description, t.SourceDocumentId, t.SourcePageId, t.SourceNoteId })
                 .FirstOrDefaultAsync(ct);
 

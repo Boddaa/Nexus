@@ -148,7 +148,7 @@ public class StudySessionService : IStudySessionService
         {
             var topicExists = await _context.StudyTopics
                 .AsNoTracking()
-                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
             if (!topicExists)
             {
                 return Result.Failure<StudySessionDto>(new Error("StudySession.TopicNotFound", "Study topic not found."));

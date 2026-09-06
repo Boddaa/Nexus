@@ -66,7 +66,7 @@ public class QuizService : IQuizService
 
         var query = _context.Quizzes
             .AsNoTracking()
-            .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted);
+            .Where(q => q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -239,7 +239,7 @@ public class QuizService : IQuizService
         {
             var topicExists = await _context.StudyTopics
                 .AsNoTracking()
-                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+                .AnyAsync(t => t.Id == topicId.Value && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
             if (!topicExists)
             {
                 return Result.Failure<QuizDetailDto>(new Error("Quiz.TopicNotFound", "Study topic not found."));
@@ -853,9 +853,10 @@ public class QuizService : IQuizService
 
         if (sourceType.Equals("Topic", StringComparison.OrdinalIgnoreCase))
         {
+            var currentUserId = _currentUserService.UserId;
             var topic = await _context.StudyTopics
                 .AsNoTracking()
-                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && !t.IsDeleted)
+                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && (!currentUserId.HasValue || t.UserId == currentUserId.Value) && !t.IsDeleted)
                 .Select(t => new { t.Id, t.Title, t.Description, t.SourceDocumentId, t.SourcePageId, t.SourceNoteId })
                 .FirstOrDefaultAsync(ct);
 

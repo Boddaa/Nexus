@@ -1124,4 +1124,323 @@ public class StudyServiceTests
         Assert.True(dashRes.Value.OverallMasteryPercentage > 0);
         Assert.Single(dashRes.Value.DueFlashcardPreviews);
     }
+
+    // ==================== 14. Cross-User Isolation in Shared Workspace Tests ====================
+
+    [Fact]
+    public async Task CrossUserIsolation_StudyTopic_BobCannotAccessOrMutateAlicesTopics()
+    {
+        var topicService = new StudyTopicService(_context, _currentUserService, NullLogger<StudyTopicService>.Instance);
+        var mockLlm = new MockLlmService { ResponseContent = "[]" };
+        var flashcardService = new FlashcardService(_context, _currentUserService, new SpacedRepetitionService(), Options.Create(new StudyOptions()), NullLogger<FlashcardService>.Instance, mockLlm);
+        var quizService = new QuizService(_context, _currentUserService, Options.Create(new StudyOptions()), NullLogger<QuizService>.Instance, mockLlm);
+
+        // 1. Alice creates topic
+        _currentUserService.UserId = _alice.Id;
+        _currentUserService.Email = _alice.Email;
+        var createRes = await topicService.CreateTopicAsync(_workspaceAlice.Id, new CreateStudyTopicRequest("Alice Topic", "Alice Desc"));
+        Assert.True(createRes.IsSuccess);
+        var aliceTopic = createRes.Value;
+
+        // 2. Add Bob to Alice's workspace
+        _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceAlice.Id, UserId = _bob.Id, Role = WorkspaceRole.Viewer });
+        await _context.SaveChangesAsync();
+
+        // 3. Switch to Bob
+        _currentUserService.UserId = _bob.Id;
+        _currentUserService.Email = _bob.Email;
+
+        // Bob cannot list Alice's topic
+        var listRes = await topicService.GetTopicsAsync(_workspaceAlice.Id);
+        Assert.True(listRes.IsSuccess);
+        Assert.Empty(listRes.Value);
+
+        // Bob cannot get Alice's topic by ID
+        var getRes = await topicService.GetTopicByIdAsync(_workspaceAlice.Id, aliceTopic.Id);
+        Assert.False(getRes.IsSuccess);
+        Assert.Equal("StudyTopic.NotFound", getRes.Error.Code);
+
+        // Bob cannot update Alice's topic
+        var updateRes = await topicService.UpdateTopicAsync(_workspaceAlice.Id, aliceTopic.Id, new UpdateStudyTopicRequest("Hacked", null));
+        Assert.False(updateRes.IsSuccess);
+        Assert.Equal("StudyTopic.NotFound", updateRes.Error.Code);
+
+        // Bob cannot delete Alice's topic
+        var deleteRes = await topicService.DeleteTopicAsync(_workspaceAlice.Id, aliceTopic.Id);
+        Assert.False(deleteRes.IsSuccess);
+        Assert.Equal("StudyTopic.NotFound", deleteRes.Error.Code);
+
+        // Bob cannot create a flashcard inside Alice's topic
+        var cardRes = await flashcardService.CreateFlashcardAsync(_workspaceAlice.Id, aliceTopic.Id, new CreateFlashcardRequest("Front", "Back", "Easy", null, null, null));
+        Assert.False(cardRes.IsSuccess);
+        Assert.Equal("Flashcard.TopicNotFound", cardRes.Error.Code);
+
+        // Bob cannot generate flashcards targeting Alice's topic
+        var genCardsRes = await flashcardService.GenerateFlashcardsAsync(_workspaceAlice.Id, aliceTopic.Id, new GenerateFlashcardsRequest("Topic", aliceTopic.Id, 3, "Medium"));
+        Assert.False(genCardsRes.IsSuccess);
+        Assert.Equal("Flashcard.TopicNotFound", genCardsRes.Error.Code);
+
+        // Bob cannot generate quizzes targeting Alice's topic
+        var genQuizRes = await quizService.GenerateQuizAsync(_workspaceAlice.Id, aliceTopic.Id, new GenerateQuizRequest("Topic", aliceTopic.Id, 3, "Medium"));
+        Assert.False(genQuizRes.IsSuccess);
+        Assert.Equal("Quiz.TopicNotFound", genQuizRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CrossUserIsolation_Flashcard_BobCannotAccessOrMutateAlicesFlashcards()
+    {
+        var spacedRep = new SpacedRepetitionService();
+        var flashcardService = new FlashcardService(_context, _currentUserService, spacedRep, Options.Create(new StudyOptions()), NullLogger<FlashcardService>.Instance);
+
+        // 1. Alice creates flashcard (due immediately)
+        _currentUserService.UserId = _alice.Id;
+        _currentUserService.Email = _alice.Email;
+        var aliceCard = new Flashcard
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            FrontText = "Alice Secret Question",
+            BackText = "Alice Secret Answer",
+            NextReviewDateUtc = DateTime.UtcNow.AddMinutes(-10),
+            EaseFactor = 2.5,
+            IntervalDays = 1,
+            Repetitions = 0,
+            State = FlashcardState.Learning
+        };
+        _context.Flashcards.Add(aliceCard);
+
+        // 2. Add Bob to Alice's workspace
+        _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceAlice.Id, UserId = _bob.Id, Role = WorkspaceRole.Viewer });
+        await _context.SaveChangesAsync();
+
+        // 3. Switch to Bob
+        _currentUserService.UserId = _bob.Id;
+        _currentUserService.Email = _bob.Email;
+
+        // Bob cannot list Alice's flashcard in workspace flashcard listing
+        var listRes = await flashcardService.GetFlashcardsAsync(_workspaceAlice.Id);
+        Assert.True(listRes.IsSuccess);
+        Assert.Empty(listRes.Value);
+
+        // Bob cannot list Alice's flashcard in due flashcards
+        var dueRes = await flashcardService.GetDueFlashcardsAsync(_workspaceAlice.Id);
+        Assert.True(dueRes.IsSuccess);
+        Assert.Empty(dueRes.Value);
+
+        // Bob cannot get Alice's flashcard by ID
+        var getRes = await flashcardService.GetFlashcardByIdAsync(_workspaceAlice.Id, aliceCard.Id);
+        Assert.False(getRes.IsSuccess);
+        Assert.Equal("Flashcard.NotFound", getRes.Error.Code);
+
+        // Bob cannot review Alice's flashcard
+        var reviewRes = await flashcardService.ReviewFlashcardAsync(_workspaceAlice.Id, aliceCard.Id, new ReviewFlashcardRequest(ReviewRating.Good));
+        Assert.False(reviewRes.IsSuccess);
+        Assert.Equal("Flashcard.NotFound", reviewRes.Error.Code);
+
+        // Bob cannot delete Alice's flashcard
+        var deleteRes = await flashcardService.DeleteFlashcardAsync(_workspaceAlice.Id, aliceCard.Id);
+        Assert.False(deleteRes.IsSuccess);
+        Assert.Equal("Flashcard.NotFound", deleteRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CrossUserIsolation_Quiz_BobCannotDiscoverAlicesQuizThroughList()
+    {
+        var quizService = new QuizService(_context, _currentUserService, Options.Create(new StudyOptions()), NullLogger<QuizService>.Instance);
+
+        // 1. Alice creates quiz
+        _currentUserService.UserId = _alice.Id;
+        _currentUserService.Email = _alice.Email;
+        var aliceQuiz = new Quiz
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            Title = "Alice's Secret Assessment"
+        };
+        var qn = new QuizQuestion
+        {
+            Quiz = aliceQuiz,
+            QuestionText = "Alice's Question?",
+            CorrectAnswer = "AliceAnswer",
+            OptionsJson = "[\"AliceAnswer\",\"Wrong\"]",
+            Explanation = "Alice secret explanation"
+        };
+        _context.Quizzes.Add(aliceQuiz);
+        _context.QuizQuestions.Add(qn);
+
+        // 2. Add Bob to Alice's workspace
+        _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceAlice.Id, UserId = _bob.Id, Role = WorkspaceRole.Viewer });
+        await _context.SaveChangesAsync();
+
+        // 3. Switch to Bob
+        _currentUserService.UserId = _bob.Id;
+        _currentUserService.Email = _bob.Email;
+
+        // Bob cannot discover Alice's quiz through quiz listing
+        var listRes = await quizService.GetQuizzesAsync(_workspaceAlice.Id);
+        Assert.True(listRes.IsSuccess);
+        Assert.Empty(listRes.Value);
+
+        // Bob cannot retrieve Alice's quiz full detail / answer key (since Bob is not creator or workspace owner)
+        var fullRes = await quizService.GetQuizByIdAsync(_workspaceAlice.Id, aliceQuiz.Id);
+        Assert.False(fullRes.IsSuccess);
+        Assert.Equal("Quiz.AccessDenied", fullRes.Error.Code);
+
+        // Safe access (answer key omitted) is allowed for taking the quiz
+        var safeRes = await quizService.GetSafeQuizByIdAsync(_workspaceAlice.Id, aliceQuiz.Id);
+        Assert.True(safeRes.IsSuccess);
+        Assert.Single(safeRes.Value.Questions);
+        Assert.Equal("Alice's Question?", safeRes.Value.Questions[0].QuestionText);
+    }
+
+    [Fact]
+    public async Task CrossUserIsolation_StudySession_BobCannotAccessOrMutateAlicesSessions()
+    {
+        var topicService = new StudyTopicService(_context, _currentUserService, NullLogger<StudyTopicService>.Instance);
+        var sessionService = new StudySessionService(_context, _currentUserService, NullLogger<StudySessionService>.Instance);
+
+        // 1. Alice creates topic and session
+        _currentUserService.UserId = _alice.Id;
+        _currentUserService.Email = _alice.Email;
+        var topicRes = await topicService.CreateTopicAsync(_workspaceAlice.Id, new CreateStudyTopicRequest("Alice Topic", null));
+        var aliceTopic = topicRes.Value;
+
+        var startRes = await sessionService.StartSessionAsync(_workspaceAlice.Id, aliceTopic.Id, new StartStudySessionRequest("Alice Studying", null));
+        Assert.True(startRes.IsSuccess);
+        var aliceSession = startRes.Value;
+
+        // 2. Add Bob to Alice's workspace
+        _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceAlice.Id, UserId = _bob.Id, Role = WorkspaceRole.Viewer });
+        await _context.SaveChangesAsync();
+
+        // 3. Switch to Bob
+        _currentUserService.UserId = _bob.Id;
+        _currentUserService.Email = _bob.Email;
+
+        // Bob cannot list Alice's session
+        var listRes = await sessionService.GetSessionsAsync(_workspaceAlice.Id);
+        Assert.True(listRes.IsSuccess);
+        Assert.Empty(listRes.Value);
+
+        // Bob cannot get Alice's session by ID
+        var getRes = await sessionService.GetSessionByIdAsync(_workspaceAlice.Id, aliceSession.Id);
+        Assert.False(getRes.IsSuccess);
+        Assert.Equal("StudySession.NotFound", getRes.Error.Code);
+
+        // Bob cannot start session targeting Alice's topic
+        var startBobRes = await sessionService.StartSessionAsync(_workspaceAlice.Id, aliceTopic.Id, new StartStudySessionRequest("Bob Intrusion", null));
+        Assert.False(startBobRes.IsSuccess);
+        Assert.Equal("StudySession.TopicNotFound", startBobRes.Error.Code);
+
+        // Bob cannot complete Alice's session
+        var compRes = await sessionService.CompleteSessionAsync(_workspaceAlice.Id, aliceSession.Id, new CompleteStudySessionRequest(45, 15, 12, "Bob trying to complete"));
+        Assert.False(compRes.IsSuccess);
+        Assert.Equal("StudySession.NotFound", compRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CrossUserIsolation_KnowledgeAssessment_BobDashboardAndAssessmentDoesNotAggregateAlicesData()
+    {
+        var assessmentService = new KnowledgeAssessmentService(_context, _currentUserService, Options.Create(new StudyOptions()), NullLogger<KnowledgeAssessmentService>.Instance);
+
+        // 1. Alice creates study data: topic, flashcards, quiz, attempt
+        _currentUserService.UserId = _alice.Id;
+        _currentUserService.Email = _alice.Email;
+
+        var aliceTopic = new StudyTopic { WorkspaceId = _workspaceAlice.Id, UserId = _alice.Id, Title = "Alice Mastery Topic" };
+        _context.StudyTopics.Add(aliceTopic);
+
+        var card1 = new Flashcard
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            StudyTopicId = aliceTopic.Id,
+            FrontText = "Q1",
+            BackText = "A1",
+            ReviewCount = 5,
+            CorrectCount = 5,
+            WrongCount = 0,
+            NextReviewDateUtc = DateTime.UtcNow.AddDays(1)
+        };
+        var card2 = new Flashcard
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            StudyTopicId = aliceTopic.Id,
+            FrontText = "Q2",
+            BackText = "A2",
+            ReviewCount = 0,
+            CorrectCount = 0,
+            WrongCount = 0,
+            NextReviewDateUtc = DateTime.UtcNow.AddMinutes(-5) // Due
+        };
+        _context.Flashcards.AddRange(card1, card2);
+
+        var quiz = new Quiz { WorkspaceId = _workspaceAlice.Id, UserId = _alice.Id, StudyTopicId = aliceTopic.Id, Title = "Alice Quiz" };
+        _context.Quizzes.Add(quiz);
+
+        var attempt = new QuizAttempt
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            QuizId = quiz.Id,
+            IsCompleted = true,
+            ScorePercentage = 100.0,
+            TotalQuestions = 10,
+            CorrectAnswers = 10,
+            CompletedAtUtc = DateTime.UtcNow
+        };
+        _context.QuizAttempts.Add(attempt);
+
+        var session = new StudySession
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            StudyTopicId = aliceTopic.Id,
+            Title = "Alice Session",
+            DurationMinutes = 60,
+            Status = StudySessionStatus.Completed
+        };
+        _context.StudySessions.Add(session);
+
+        // 2. Add Bob to Alice's workspace
+        _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceAlice.Id, UserId = _bob.Id, Role = WorkspaceRole.Viewer });
+        await _context.SaveChangesAsync();
+
+        // 3. Switch to Bob (Bob has NO study activity)
+        _currentUserService.UserId = _bob.Id;
+        _currentUserService.Email = _bob.Email;
+
+        // Bob's assessment must NOT aggregate Alice's study data
+        var assessRes = await assessmentService.GetAssessmentAsync(_workspaceAlice.Id);
+        Assert.True(assessRes.IsSuccess);
+        Assert.Empty(assessRes.Value.StrongAreas);
+        Assert.Empty(assessRes.Value.DevelopingAreas);
+        Assert.Empty(assessRes.Value.WeakAreas);
+        Assert.Equal(0, assessRes.Value.TotalFlashcards);
+        Assert.Equal(0, assessRes.Value.TotalQuizzes);
+        Assert.Equal(0, assessRes.Value.TotalAttempts);
+        Assert.Equal(0.0, assessRes.Value.OverallAccuracy);
+        Assert.Equal(0.0, assessRes.Value.OverallMasteryPercentage);
+
+        // Bob cannot see performance for Alice's topic
+        var perfRes = await assessmentService.GetTopicPerformanceAsync(_workspaceAlice.Id, aliceTopic.Id);
+        Assert.False(perfRes.IsSuccess);
+        Assert.Equal("Topic.NotFound", perfRes.Error.Code);
+
+        // Bob's dashboard must NOT aggregate Alice's study data
+        var dashRes = await assessmentService.GetDashboardAsync(_workspaceAlice.Id);
+        Assert.True(dashRes.IsSuccess);
+        Assert.Equal(0, dashRes.Value.TotalTopics);
+        Assert.Equal(0, dashRes.Value.TotalSessions);
+        Assert.Equal(0, dashRes.Value.TotalStudyMinutes);
+        Assert.Equal(0, dashRes.Value.TotalFlashcards);
+        Assert.Equal(0, dashRes.Value.DueFlashcards);
+        Assert.Empty(dashRes.Value.DueFlashcardPreviews);
+        Assert.Equal(0, dashRes.Value.TotalQuizzes);
+        Assert.Equal(0, dashRes.Value.CompletedAttempts);
+        Assert.Equal(0.0, dashRes.Value.AverageQuizScore);
+        Assert.Equal(0.0, dashRes.Value.OverallMasteryPercentage);
+        Assert.Empty(dashRes.Value.RecentTopics);
+    }
 }

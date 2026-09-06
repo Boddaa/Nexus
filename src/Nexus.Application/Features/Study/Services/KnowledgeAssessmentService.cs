@@ -57,7 +57,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var topic = await _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.Id == topicId && t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.Id == topicId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
             .Select(t => new { t.Id, t.Title })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -70,7 +70,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var cardStat = await _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.StudyTopicId == topicId && f.WorkspaceId == workspaceId && !f.IsDeleted)
+            .Where(f => f.StudyTopicId == topicId && f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted)
             .GroupBy(f => 1)
             .Select(g => new
             {
@@ -84,11 +84,11 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var totalQuizzes = await _context.Quizzes
             .AsNoTracking()
-            .CountAsync(q => q.StudyTopicId == topicId && q.WorkspaceId == workspaceId && !q.IsDeleted, cancellationToken);
+            .CountAsync(q => q.StudyTopicId == topicId && q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted, cancellationToken);
 
         var attemptStat = await _context.QuizAttempts
             .AsNoTracking()
-            .Where(a => a.Quiz.StudyTopicId == topicId && a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted)
+            .Where(a => a.Quiz.StudyTopicId == topicId && a.WorkspaceId == workspaceId && a.UserId == userId.Value && a.IsCompleted && !a.IsDeleted)
             .GroupBy(a => 1)
             .Select(g => new
             {
@@ -133,7 +133,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var topicQuery = _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted);
+            .Where(t => t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -146,7 +146,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var cardQuery = _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted);
+            .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -171,7 +171,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var quizQuery = _context.Quizzes
             .AsNoTracking()
-            .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted);
+            .Where(q => q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -188,7 +188,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var attemptQuery = _context.QuizAttempts
             .AsNoTracking()
-            .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted);
+            .Where(a => a.WorkspaceId == workspaceId && a.UserId == userId.Value && a.IsCompleted && !a.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -305,18 +305,18 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var totalTopics = await _context.StudyTopics
             .AsNoTracking()
-            .CountAsync(t => t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+            .CountAsync(t => t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
 
         var sessionQuery = _context.StudySessions
             .AsNoTracking()
-            .Where(s => s.WorkspaceId == workspaceId && !s.IsDeleted);
+            .Where(s => s.WorkspaceId == workspaceId && s.UserId == userId.Value && !s.IsDeleted);
 
         var totalSessions = await sessionQuery.CountAsync(cancellationToken);
         var totalStudyMinutes = await sessionQuery.SumAsync(s => s.DurationMinutes, cancellationToken);
 
         var flashcardQuery = _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted);
+            .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted);
 
         var totalFlashcards = await flashcardQuery.CountAsync(cancellationToken);
         var dueFlashcards = await flashcardQuery.CountAsync(f => f.NextReviewDateUtc <= now, cancellationToken);
@@ -337,13 +337,13 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var quizQuery = _context.Quizzes
             .AsNoTracking()
-            .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted);
+            .Where(q => q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted);
 
         var totalQuizzes = await quizQuery.CountAsync(cancellationToken);
 
         var attemptQuery = _context.QuizAttempts
             .AsNoTracking()
-            .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted);
+            .Where(a => a.WorkspaceId == workspaceId && a.UserId == userId.Value && a.IsCompleted && !a.IsDeleted);
 
         var completedAttempts = await attemptQuery.CountAsync(cancellationToken);
         var averageQuizScore = completedAttempts > 0 ? Math.Round(await attemptQuery.AverageAsync(a => a.ScorePercentage, cancellationToken), 2) : 0.0;
@@ -361,7 +361,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
 
         var recentTopics = await _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
             .OrderByDescending(t => t.UpdatedAtUtc ?? t.CreatedAtUtc)
             .Take(5)
             .Select(t => new { t.Id, t.Title })
@@ -372,7 +372,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
         var recentCardStatsList = recentTopicIds.Count > 0
             ? await _context.Flashcards
                 .AsNoTracking()
-                .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted && f.StudyTopicId != null && recentTopicIds.Contains(f.StudyTopicId.Value))
+                .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted && f.StudyTopicId != null && recentTopicIds.Contains(f.StudyTopicId.Value))
                 .GroupBy(f => f.StudyTopicId!.Value)
                 .Select(g => new
                 {
@@ -391,7 +391,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
         var recentQuizCountsList = recentTopicIds.Count > 0
             ? await _context.Quizzes
                 .AsNoTracking()
-                .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted && q.StudyTopicId != null && recentTopicIds.Contains(q.StudyTopicId.Value))
+                .Where(q => q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted && q.StudyTopicId != null && recentTopicIds.Contains(q.StudyTopicId.Value))
                 .GroupBy(q => q.StudyTopicId!.Value)
                 .Select(g => new { TopicId = g.Key, Count = g.Count() })
                 .ToListAsync(cancellationToken)
@@ -402,7 +402,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
         var recentAttemptStatsList = recentTopicIds.Count > 0
             ? await _context.QuizAttempts
                 .AsNoTracking()
-                .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted && a.Quiz.StudyTopicId != null && recentTopicIds.Contains(a.Quiz.StudyTopicId.Value))
+                .Where(a => a.WorkspaceId == workspaceId && a.UserId == userId.Value && a.IsCompleted && !a.IsDeleted && a.Quiz.StudyTopicId != null && recentTopicIds.Contains(a.Quiz.StudyTopicId.Value))
                 .GroupBy(a => a.Quiz.StudyTopicId!.Value)
                 .Select(g => new
                 {
