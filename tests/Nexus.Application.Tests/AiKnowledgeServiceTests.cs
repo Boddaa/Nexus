@@ -818,4 +818,97 @@ public class AiKnowledgeServiceTests
         Assert.False(delRes.IsSuccess);
         Assert.Equal("AiGeneration.NotFound", delRes.Error.Code);
     }
+
+    [Fact]
+    public async Task SmallDocument_16Chunks300CharsEach_FitsBudget_UsesAll16Chunks()
+    {
+        // Arrange: 16 chunks x 300 chars = 4800 chars (fits in default 6000 maxChars)
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "SixteenChunksDoc.pdf",
+            ContentType = "application/pdf",
+            FileSizeBytes = 1024 * 5,
+            Title = "Sixteen Chunks Doc",
+            Status = DocumentStatus.Processed
+        };
+        _context.Documents.Add(doc);
+
+        for (int i = 0; i < 16; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = i,
+                Text = $"[CHUNK_{i:D2}] " + new string('c', 280),
+                StartPosition = i * 300,
+                EndPosition = (i + 1) * 300
+            });
+        }
+        _context.SaveChanges();
+
+        var llm = new FakeLlmService { ResponseToReturn = "Summary of all 16 chunks." };
+        var options = new AiKnowledgeOptions { MaxContextCharacters = 6000 };
+        var service = CreateService(llm, options);
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert: All 16 chunks must be used without falling into the 5-representative reduction
+        Assert.True(result.IsSuccess);
+        Assert.Equal(16, result.Value.Sources.Count);
+        var userMsg = llm.LastRequest!.Messages.Last().Content;
+        for (int i = 0; i < 16; i++)
+        {
+            Assert.Contains($"[CHUNK_{i:D2}]", userMsg);
+        }
+    }
+
+    [Fact]
+    public async Task LargeDocument_NonContiguousIndexes_DistributesEvenly()
+    {
+        // Arrange: 20 chunks with non-sequential, gapped, arbitrary ChunkIndex values
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "GappedDoc.pdf",
+            ContentType = "application/pdf",
+            FileSizeBytes = 1024 * 10,
+            Title = "Gapped Doc",
+            Status = DocumentStatus.Processed
+        };
+        _context.Documents.Add(doc);
+
+        var arbitraryIndices = new[] { 10, 25, 40, 77, 99, 150, 200, 310, 420, 500, 610, 720, 830, 940, 1050, 1200, 1350, 1500, 1700, 2000 };
+        for (int i = 0; i < arbitraryIndices.Length; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = arbitraryIndices[i], // Non-contiguous
+                Text = $"[GAPPED_{i:D2}] Non-contiguous chunk {arbitraryIndices[i]} content. " + new string('z', 350),
+                StartPosition = i * 500,
+                EndPosition = (i + 1) * 500
+            });
+        }
+        _context.SaveChanges();
+
+        var llm = new FakeLlmService { ResponseToReturn = "Summary of gapped document." };
+        var options = new AiKnowledgeOptions { MaxContextCharacters = 6000 };
+        var service = CreateService(llm, options);
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert: Must successfully retrieve 5 representative chunks despite gapped ChunkIndex
+        Assert.True(result.IsSuccess);
+        Assert.Equal(5, result.Value.Sources.Count);
+        var userMsg = llm.LastRequest!.Messages.Last().Content;
+
+        // Beginning, middle, and ending chunks should be present
+        Assert.Contains("[GAPPED_00]", userMsg);
+        Assert.Contains("[GAPPED_19]", userMsg);
+    }
 }

@@ -242,111 +242,94 @@ public class AiKnowledgeService : IAiKnowledgeService
             return Result.Success((sb.ToString().Trim(), (IReadOnlyList<ChatSourceDto>)sources));
         }
 
-        // 2. Chunks exist: Distinguish between Small Document and Large Document
-        // A document is small if its chunk count is modest AND all its chunks fit within MaxContextCharacters.
-        int smallCandidateThreshold = Math.Max(5, maxChars / 400);
+        // 2. Chunks exist: Determine real content size via database-side aggregate before materialization
+        var totalTextLength = await _context.DocumentChunks
+            .AsNoTracking()
+            .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
+            .SumAsync(c => (int?)c.Text.Length, cancellationToken) ?? 0;
 
-        List<ChunkSummary>? candidateChunks = null;
-
-        if (totalChunks <= smallCandidateThreshold)
+        if (totalTextLength <= maxChars)
         {
-            // Bounded fetch of all candidate chunks ordered by ChunkIndex
-            candidateChunks = await _context.DocumentChunks
+            // === SMALL DOCUMENT ===
+            // The real total content fits within MaxContextCharacters:
+            // Use the complete relevant document content without truncation.
+            var allChunks = await _context.DocumentChunks
                 .AsNoTracking()
                 .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
-                .OrderBy(c => c.ChunkIndex)
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
                 .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
                 .ToListAsync(cancellationToken);
 
-            int totalTextLength = candidateChunks.Sum(c => c.Text.Length);
-
-            if (totalTextLength <= maxChars)
+            foreach (var chunk in allChunks)
             {
-                // === SMALL DOCUMENT ===
-                // Complete document content fits within MaxContextCharacters:
-                // Use the complete relevant document content without truncation.
-                foreach (var chunk in candidateChunks)
+                var text = chunk.Text.Trim();
+                if (string.IsNullOrWhiteSpace(text)) continue;
+
+                if (sb.Length > 0)
                 {
-                    var text = chunk.Text.Trim();
-                    if (string.IsNullOrWhiteSpace(text)) continue;
-
-                    if (sb.Length > 0)
-                    {
-                        sb.AppendLine();
-                    }
-                    sb.AppendLine(text);
-
-                    sources.Add(new ChatSourceDto(
-                        Id: Guid.NewGuid(),
-                        DocumentId: documentId,
-                        DocumentChunkId: chunk.Id,
-                        PageId: null,
-                        NoteId: null,
-                        Title: documentTitle,
-                        SourceType: "Document",
-                        RelevanceScore: 1.0,
-                        PageNumber: chunk.PageNumber,
-                        Snippet: text.Length > 200 ? text.Substring(0, 197) + "..." : text));
+                    sb.AppendLine();
                 }
+                sb.AppendLine(text);
 
-                var smallContent = sb.ToString().Trim();
-                if (string.IsNullOrWhiteSpace(smallContent))
-                {
-                    return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
-                        new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
-                }
-
-                return Result.Success((smallContent, (IReadOnlyList<ChatSourceDto>)sources));
+                sources.Add(new ChatSourceDto(
+                    Id: Guid.NewGuid(),
+                    DocumentId: documentId,
+                    DocumentChunkId: chunk.Id,
+                    PageId: null,
+                    NoteId: null,
+                    Title: documentTitle,
+                    SourceType: "Document",
+                    RelevanceScore: 1.0,
+                    PageNumber: chunk.PageNumber,
+                    Snippet: text.Length > 200 ? text.Substring(0, 197) + "..." : text));
             }
+
+            var smallContent = sb.ToString().Trim();
+            if (string.IsNullOrWhiteSpace(smallContent))
+            {
+                return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
+                    new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
+            }
+
+            return Result.Success((smallContent, (IReadOnlyList<ChatSourceDto>)sources));
         }
 
         // === LARGE DOCUMENT ===
-        // The document exceeds MaxContextCharacters or has more chunks than the small threshold.
+        // The real total content exceeds MaxContextCharacters.
         // Retrieve chunks in a strictly bounded way:
         // Do NOT load every chunk into memory.
         // Do NOT call ToListAsync() on the complete chunk table.
         // Deterministically select 5 representative chunks distributed across the document:
         // Beginning (0%), Early-Middle (25%), Middle (50%), Late-Middle (75%), Ending (100%).
+        // We use positional row offsets ordered by (StartPosition, ChunkIndex) so selection is
+        // robust against non-contiguous, 1-based, or gapped indexes.
         int kRepresentatives = Math.Min(5, totalChunks);
-        var targetIndices = new SortedSet<int>();
+        var offsets = new List<int>();
         for (int i = 0; i < kRepresentatives; i++)
         {
-            int index = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
-            targetIndices.Add(index);
+            int offset = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
+            offsets.Add(offset);
         }
 
-        List<ChunkSummary> representativeChunks;
+        var uniqueOffsets = offsets.Distinct().OrderBy(x => x).ToList();
+        var representativeChunks = new List<ChunkSummary>();
 
-        if (candidateChunks != null)
+        foreach (var offset in uniqueOffsets)
         {
-            // Already in memory from small candidate query
-            representativeChunks = candidateChunks
-                .Where(c => targetIndices.Contains(c.ChunkIndex))
-                .OrderBy(c => c.ChunkIndex)
-                .ToList();
-        }
-        else
-        {
-            var indexList = targetIndices.ToList();
-
-            // Database-friendly indexed lookup of ONLY the representative chunks
-            representativeChunks = await _context.DocumentChunks
+            var chunk = await _context.DocumentChunks
                 .AsNoTracking()
-                .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted && indexList.Contains(c.ChunkIndex))
-                .OrderBy(c => c.ChunkIndex)
+                .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
+                .Skip(offset)
+                .Take(1)
                 .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
-                .ToListAsync(cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
 
-            // Fallback for non-contiguous/legacy indexes if exact ChunkIndex match missed
-            if (representativeChunks.Count == 0)
+            if (chunk != null)
             {
-                representativeChunks = await _context.DocumentChunks
-                    .AsNoTracking()
-                    .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
-                    .OrderBy(c => c.StartPosition)
-                    .Take(5)
-                    .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
-                    .ToListAsync(cancellationToken);
+                representativeChunks.Add(chunk);
             }
         }
 
