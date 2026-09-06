@@ -457,7 +457,8 @@ public class SearchService : ISearchService
                     null,
                     c.ChunkId,
                     "Semantic",
-                    c.SimilarityScore
+                    c.SimilarityScore,
+                    c.PageNumber
                 )).ToList();
             }
         }
@@ -521,7 +522,8 @@ public class SearchService : ISearchService
                     existing.UpdatedAtUtc,
                     sem.ChunkId,
                     "Hybrid",
-                    sem.SimilarityScore);
+                    sem.SimilarityScore,
+                    sem.PageNumber);
             }
             else
             {
@@ -537,7 +539,8 @@ public class SearchService : ISearchService
                     sem.UpdatedAtUtc,
                     sem.ChunkId,
                     "Semantic",
-                    sem.SimilarityScore);
+                    sem.SimilarityScore,
+                    sem.PageNumber);
             }
         }
 

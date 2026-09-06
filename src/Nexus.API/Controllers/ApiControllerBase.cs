@@ -39,12 +39,12 @@ public abstract class ApiControllerBase : ControllerBase
 
     private IActionResult HandleError(Error error)
     {
-        if (error == Error.NotFound)
+        if (error == Error.NotFound || error.Code.EndsWith(".NotFound") || error.Code.Contains("NotFound"))
         {
             return NotFound(new { error.Code, error.Description });
         }
 
-        if (error == Error.Unauthorized)
+        if (error == Error.Unauthorized || error.Code.EndsWith(".Unauthorized") || error.Code.Contains("AccessDenied") || error.Code.Contains("Unauthorized"))
         {
             return Unauthorized(new { error.Code, error.Description });
         }

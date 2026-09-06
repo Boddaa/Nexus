@@ -21,7 +21,8 @@ public record SearchResultDto(
     DateTime? UpdatedAtUtc,
     Guid? ChunkId = null,
     string? SearchMode = null,
-    double? SimilarityScore = null
+    double? SimilarityScore = null,
+    int? PageNumber = null
 );
 
 public record PagedResult<T>(

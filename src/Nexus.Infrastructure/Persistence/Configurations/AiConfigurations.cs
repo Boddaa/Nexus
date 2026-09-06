@@ -16,10 +16,16 @@ public class AiConversationConfiguration : IEntityTypeConfiguration<AiConversati
             .IsRequired()
             .HasMaxLength(200);
 
+        builder.Property(c => c.IsArchived)
+            .HasDefaultValue(false);
+
         builder.HasMany(c => c.Messages)
             .WithOne(m => m.Conversation)
             .HasForeignKey(m => m.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(c => new { c.WorkspaceId, c.UserId });
+        builder.HasIndex(c => new { c.WorkspaceId, c.CreatedAtUtc });
 
         builder.HasQueryFilter(c => !c.IsDeleted);
     }
@@ -41,6 +47,8 @@ public class AiMessageConfiguration : IEntityTypeConfiguration<AiMessage>
             .HasForeignKey(s => s.AiMessageId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasIndex(m => new { m.ConversationId, m.CreatedAtUtc });
+
         builder.HasQueryFilter(m => !m.IsDeleted);
     }
 }
@@ -53,6 +61,10 @@ public class SourceReferenceConfiguration : IEntityTypeConfiguration<SourceRefer
 
         builder.HasKey(s => s.Id);
 
+        builder.Property(s => s.SourceType)
+            .IsRequired()
+            .HasMaxLength(50);
+
         builder.Property(s => s.SourceTitle)
             .IsRequired()
             .HasMaxLength(250);
@@ -64,6 +76,8 @@ public class SourceReferenceConfiguration : IEntityTypeConfiguration<SourceRefer
             .WithMany(c => c.SourceReferences)
             .HasForeignKey(s => s.DocumentChunkId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(s => s.AiMessageId);
 
         builder.HasQueryFilter(s => !s.IsDeleted);
     }

@@ -24,6 +24,10 @@ public static class DependencyInjection
         services.AddScoped<Nexus.Application.Features.Documents.Services.IChunkEmbeddingService, Nexus.Application.Features.Documents.Services.ChunkEmbeddingService>();
         services.AddScoped<Nexus.Application.Features.Search.Services.IVectorSearchService, Nexus.Application.Features.Search.Services.VectorSearchService>();
         services.AddScoped<Nexus.Application.Features.Search.Services.ISearchService, Nexus.Application.Features.Search.Services.SearchService>();
+        services.AddScoped<Nexus.Application.Features.AI.Services.IContextBuilder, Nexus.Application.Features.AI.Services.ContextBuilder>();
+        services.AddScoped<Nexus.Application.Features.AI.Services.IPromptBuilder, Nexus.Application.Features.AI.Services.PromptBuilder>();
+        services.AddScoped<Nexus.Application.Common.Interfaces.IRagService, Nexus.Application.Features.AI.Services.RagService>();
+        services.AddScoped<Nexus.Application.Features.Conversations.Services.IConversationService, Nexus.Application.Features.Conversations.Services.ConversationService>();
 
         return services;
     }

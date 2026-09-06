@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Nexus.Application.DTOs.Auth;
+using Nexus.Application.DTOs.Conversations;
 using Nexus.Application.DTOs.Documents;
 using Nexus.Application.DTOs.Notes;
 using Nexus.Application.DTOs.Pages;
@@ -52,6 +53,15 @@ public interface IApiClient
 
     // Search
     Task<Result<PagedResult<SearchResultDto>>> SearchAsync(Guid workspaceId, SearchRequest request, CancellationToken cancellationToken = default);
+
+    // AI Conversations & Chat
+    Task<Result<IReadOnlyList<ConversationDto>>> GetConversationsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<Result<ConversationDto>> CreateConversationAsync(Guid workspaceId, CreateConversationRequest request, CancellationToken cancellationToken = default);
+    Task<Result<ConversationDto>> GetConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<ChatMessageDto>>> GetConversationMessagesAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
+    Task<Result<SendChatMessageResponse>> SendChatMessageAsync(Guid workspaceId, Guid conversationId, SendChatMessageRequest request, CancellationToken cancellationToken = default);
+    Task<Result<bool>> ArchiveConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
+    Task<Result<bool>> DeleteConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default);
 }
 
 public class ApiClient : IApiClient
@@ -726,6 +736,138 @@ public class ApiClient : IApiClient
         }
 
         return Result.Failure<T>(new Error("API.Error", $"Request failed with status code {response.StatusCode}"));
+    }
+
+    // AI Conversations & Chat
+    public async Task<Result<IReadOnlyList<ConversationDto>>> GetConversationsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/conversations", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<IReadOnlyList<ConversationDto>>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<IReadOnlyList<ConversationDto>>(Error.NullValue);
+            }
+            return await ExtractErrorAsync<IReadOnlyList<ConversationDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<ConversationDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<ConversationDto>> CreateConversationAsync(Guid workspaceId, CreateConversationRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/conversations", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<ConversationDto>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<ConversationDto>(Error.NullValue);
+            }
+            return await ExtractErrorAsync<ConversationDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<ConversationDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<ConversationDto>> GetConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/conversations/{conversationId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<ConversationDto>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<ConversationDto>(Error.NullValue);
+            }
+            return await ExtractErrorAsync<ConversationDto>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<ConversationDto>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<ChatMessageDto>>> GetConversationMessagesAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/workspaces/{workspaceId}/conversations/{conversationId}/messages", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<IReadOnlyList<ChatMessageDto>>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<IReadOnlyList<ChatMessageDto>>(Error.NullValue);
+            }
+            return await ExtractErrorAsync<IReadOnlyList<ChatMessageDto>>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<IReadOnlyList<ChatMessageDto>>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<SendChatMessageResponse>> SendChatMessageAsync(Guid workspaceId, Guid conversationId, SendChatMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsJsonAsync($"api/workspaces/{workspaceId}/conversations/{conversationId}/messages", request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var data = await response.Content.ReadFromJsonAsync<SendChatMessageResponse>(_jsonOptions, cancellationToken);
+                return data != null ? Result.Success(data) : Result.Failure<SendChatMessageResponse>(Error.NullValue);
+            }
+            return await ExtractErrorAsync<SendChatMessageResponse>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<SendChatMessageResponse>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> ArchiveConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.PostAsync($"api/workspaces/{workspaceId}/conversations/{conversationId}/archive", null, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
+    }
+
+    public async Task<Result<bool>> DeleteConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.DeleteAsync($"api/workspaces/{workspaceId}/conversations/{conversationId}", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return Result.Success(true);
+            }
+            return await ExtractErrorAsync<bool>(response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<bool>(new Error("Network.Error", ex.Message));
+        }
     }
 
     private async Task<Result> ExtractErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)

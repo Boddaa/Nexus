@@ -391,4 +391,99 @@ public class FakeApiClient : IApiClient
         var paged = new PagedResult<SearchResultDto>(items, request.Page, request.PageSize, items.Count);
         return Task.FromResult(Result.Success(paged));
     }
+
+    // AI Conversations & Chat
+    public List<Nexus.Application.DTOs.Conversations.ConversationDto> Conversations { get; set; } = new();
+    public List<Nexus.Application.DTOs.Conversations.ChatMessageDto> Messages { get; set; } = new();
+
+    public Task<Result<IReadOnlyList<Nexus.Application.DTOs.Conversations.ConversationDto>>> GetConversationsAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<Nexus.Application.DTOs.Conversations.ConversationDto>>(FailureError));
+        var list = Conversations.Where(c => c.WorkspaceId == workspaceId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<Nexus.Application.DTOs.Conversations.ConversationDto>>(list));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Conversations.ConversationDto>> CreateConversationAsync(Guid workspaceId, Nexus.Application.DTOs.Conversations.CreateConversationRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Conversations.ConversationDto>(FailureError));
+        var conv = new Nexus.Application.DTOs.Conversations.ConversationDto(
+            Guid.NewGuid(),
+            workspaceId,
+            Guid.NewGuid(),
+            request?.Title ?? "New Conversation",
+            false,
+            DateTime.UtcNow,
+            null,
+            0);
+        Conversations.Insert(0, conv);
+        return Task.FromResult(Result.Success(conv));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Conversations.ConversationDto>> GetConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Conversations.ConversationDto>(FailureError));
+        var conv = Conversations.FirstOrDefault(c => c.Id == conversationId && c.WorkspaceId == workspaceId);
+        if (conv == null) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Conversations.ConversationDto>(new Error("Conversation.NotFound", "Not found.")));
+        return Task.FromResult(Result.Success(conv));
+    }
+
+    public Task<Result<IReadOnlyList<Nexus.Application.DTOs.Conversations.ChatMessageDto>>> GetConversationMessagesAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<Nexus.Application.DTOs.Conversations.ChatMessageDto>>(FailureError));
+        var msgs = Messages.Where(m => m.ConversationId == conversationId).ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<Nexus.Application.DTOs.Conversations.ChatMessageDto>>(msgs));
+    }
+
+    public Task<Result<Nexus.Application.DTOs.Conversations.SendChatMessageResponse>> SendChatMessageAsync(Guid workspaceId, Guid conversationId, Nexus.Application.DTOs.Conversations.SendChatMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<Nexus.Application.DTOs.Conversations.SendChatMessageResponse>(FailureError));
+        var userMsg = new Nexus.Application.DTOs.Conversations.ChatMessageDto(
+            Guid.NewGuid(),
+            conversationId,
+            "User",
+            request.Content,
+            DateTime.UtcNow,
+            null,
+            Array.Empty<Nexus.Application.DTOs.Conversations.ChatSourceDto>());
+        Messages.Add(userMsg);
+
+        var sources = new List<Nexus.Application.DTOs.Conversations.ChatSourceDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), null, null, null, "Mock Source", "Document", 0.95, 1, "Mock snippet")
+        };
+
+        var assistantMsg = new Nexus.Application.DTOs.Conversations.ChatMessageDto(
+            Guid.NewGuid(),
+            conversationId,
+            "Assistant",
+            "This is a mock assistant answer for: " + request.Content,
+            DateTime.UtcNow,
+            50,
+            sources);
+        Messages.Add(assistantMsg);
+
+        var conv = Conversations.FirstOrDefault(c => c.Id == conversationId) ?? new Nexus.Application.DTOs.Conversations.ConversationDto(
+            conversationId, workspaceId, Guid.NewGuid(), "Chat", false, DateTime.UtcNow, DateTime.UtcNow, Messages.Count);
+
+        return Task.FromResult(Result.Success(new Nexus.Application.DTOs.Conversations.SendChatMessageResponse(conv, userMsg, assistantMsg, sources)));
+    }
+
+    public Task<Result<bool>> ArchiveConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<bool>(FailureError));
+        var conv = Conversations.FirstOrDefault(c => c.Id == conversationId);
+        if (conv != null)
+        {
+            Conversations.Remove(conv);
+            Conversations.Add(conv with { IsArchived = true });
+        }
+        return Task.FromResult(Result.Success(true));
+    }
+
+    public Task<Result<bool>> DeleteConversationAsync(Guid workspaceId, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        if (ShouldFail) return Task.FromResult(Result.Failure<bool>(FailureError));
+        Conversations.RemoveAll(c => c.Id == conversationId);
+        return Task.FromResult(Result.Success(true));
+    }
 }

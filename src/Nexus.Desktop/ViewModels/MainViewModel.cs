@@ -92,6 +92,9 @@ public partial class MainViewModel : ViewModelBase
     private void NavigateSearch() => _navigationService.NavigateTo<SearchViewModel>();
 
     [RelayCommand]
+    private void NavigateAiAssistant() => _navigationService.NavigateTo<AiAssistantViewModel>();
+
+    [RelayCommand]
     private void SwitchWorkspace() => _navigationService.NavigateTo<WorkspaceSelectorViewModel>();
 
     [RelayCommand]

@@ -98,33 +98,3 @@ public partial class StudyViewModel : ViewModelBase
         _userSession = userSession;
     }
 }
-
-public partial class AiAssistantViewModel : ViewModelBase
-{
-    private readonly UserSession _userSession;
-
-    [ObservableProperty]
-    private string _inputMessage = string.Empty;
-
-    [ObservableProperty]
-    private ObservableCollection<ChatMessage> _messages = new();
-
-    public AiAssistantViewModel(UserSession userSession)
-    {
-        _userSession = userSession;
-        Messages.Add(new ChatMessage(Domain.Enums.AiRole.Assistant, "Hello! I am your NEXUS AI Assistant. Ask me anything about your documents, notes, or study topics."));
-    }
-
-    [RelayCommand]
-    private void SendMessage()
-    {
-        if (string.IsNullOrWhiteSpace(InputMessage)) return;
-
-        var userText = InputMessage.Trim();
-        Messages.Add(new ChatMessage(Domain.Enums.AiRole.User, userText));
-        InputMessage = string.Empty;
-
-        // Mock AI response
-        Messages.Add(new ChatMessage(Domain.Enums.AiRole.Assistant, $"I found relevant context for '{userText}' in your workspace. (Sources: EF Core Documentation.pdf, Page 12)"));
-    }
-}

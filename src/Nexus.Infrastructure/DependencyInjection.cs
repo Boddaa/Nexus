@@ -58,15 +58,23 @@ public static class DependencyInjection
         // AI & Vector Layer (Replaceable & decoupled)
         services.Configure<Nexus.Application.Common.Options.EmbeddingOptions>(configuration.GetSection(Nexus.Application.Common.Options.EmbeddingOptions.SectionName));
         services.Configure<Nexus.Application.Common.Options.HybridSearchOptions>(configuration.GetSection(Nexus.Application.Common.Options.HybridSearchOptions.SectionName));
+        services.Configure<Nexus.Application.Common.Options.LlmOptions>(configuration.GetSection(Nexus.Application.Common.Options.LlmOptions.SectionName));
+        services.Configure<Nexus.Application.Common.Options.RagOptions>(configuration.GetSection(Nexus.Application.Common.Options.RagOptions.SectionName));
+
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
         services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();
         services.AddScoped<Nexus.Infrastructure.AI.Embeddings.IEmbeddingProvider, Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
         services.AddScoped<Nexus.Infrastructure.AI.Embeddings.IEmbeddingProvider, Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();
         services.AddScoped<IEmbeddingService, Nexus.Infrastructure.AI.Embeddings.EmbeddingService>();
 
+        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OpenAiLlmProvider>();
+        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>();
+        services.AddScoped<Nexus.Infrastructure.AI.LLM.ILlmProvider, Nexus.Infrastructure.AI.LLM.OpenAiLlmProvider>();
+        services.AddScoped<Nexus.Infrastructure.AI.LLM.ILlmProvider, Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>();
+        services.AddScoped<Nexus.Application.Common.Interfaces.ILLMService, Nexus.Infrastructure.AI.LLM.LLMService>();
+
         services.AddSingleton<IChatService, MockChatService>();
         services.AddSingleton<IVectorStore, InMemoryVectorStore>();
-        services.AddScoped<IRagService, MockRagService>();
         services.AddScoped<IAiDocumentAnalyzer, MockAiDocumentAnalyzer>();
         services.AddScoped<IAiStudyService, MockAiStudyService>();
 

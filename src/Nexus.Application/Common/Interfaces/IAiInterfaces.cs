@@ -21,6 +21,12 @@ public interface IVectorStore
 
 public interface IRagService
 {
+    Task<Nexus.Domain.Common.Result<RagAnswerResult>> AnswerQuestionAsync(
+        Guid workspaceId,
+        string question,
+        IReadOnlyList<LLMChatMessage>? conversationHistory = null,
+        CancellationToken cancellationToken = default);
+
     Task<RagResponse> AnswerQuestionAsync(RagRequest request, CancellationToken cancellationToken = default);
 }
 

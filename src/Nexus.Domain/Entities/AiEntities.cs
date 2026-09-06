@@ -6,12 +6,17 @@ namespace Nexus.Domain.Entities;
 public class AiConversation : AuditableEntity
 {
     public Guid WorkspaceId { get; set; }
+    public Guid UserId { get; set; }
     public string Title { get; set; } = "New Conversation";
+    public bool IsArchived { get; set; } = false;
     public ContextType ContextType { get; set; } = ContextType.Workspace;
     public Guid? ContextEntityId { get; set; }
 
     public Workspace Workspace { get; set; } = null!;
     public ICollection<AiMessage> Messages { get; set; } = new List<AiMessage>();
+
+    public AiConversation() { }
+    public AiConversation(Guid id) { Id = id; }
 }
 
 public class AiMessage : AuditableEntity
@@ -24,6 +29,9 @@ public class AiMessage : AuditableEntity
 
     public AiConversation Conversation { get; set; } = null!;
     public ICollection<SourceReference> SourceReferences { get; set; } = new List<SourceReference>();
+
+    public AiMessage() { }
+    public AiMessage(Guid id) { Id = id; }
 }
 
 public class SourceReference : AuditableEntity
@@ -33,6 +41,7 @@ public class SourceReference : AuditableEntity
     public Guid? DocumentChunkId { get; set; }
     public Guid? PageId { get; set; }
     public Guid? NoteId { get; set; }
+    public string SourceType { get; set; } = "Document";
     public string SourceTitle { get; set; } = string.Empty;
     public string Snippet { get; set; } = string.Empty;
     public double RelevanceScore { get; set; } = 0.0;
@@ -40,4 +49,7 @@ public class SourceReference : AuditableEntity
 
     public AiMessage AiMessage { get; set; } = null!;
     public DocumentChunk? DocumentChunk { get; set; }
+
+    public SourceReference() { }
+    public SourceReference(Guid id) { Id = id; }
 }

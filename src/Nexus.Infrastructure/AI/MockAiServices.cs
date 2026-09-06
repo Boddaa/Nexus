@@ -80,6 +80,20 @@ public class MockRagService : IRagService
         _chatService = chatService;
     }
 
+    public Task<Nexus.Domain.Common.Result<Nexus.Application.Common.Models.RagAnswerResult>> AnswerQuestionAsync(
+        Guid workspaceId,
+        string question,
+        IReadOnlyList<Nexus.Application.Common.Models.LLMChatMessage>? conversationHistory = null,
+        CancellationToken cancellationToken = default)
+    {
+        var citations = new List<Nexus.Application.DTOs.Conversations.ChatSourceDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), null, null, null, "Workspace Knowledge Base", "Document", 0.92, 1, "Mock excerpt matching " + question)
+        };
+        var answerResult = new Nexus.Application.Common.Models.RagAnswerResult("Mock answer for " + question, citations, 10, 20, 30);
+        return Task.FromResult(Nexus.Domain.Common.Result.Success(answerResult));
+    }
+
     public async Task<RagResponse> AnswerQuestionAsync(RagRequest request, CancellationToken cancellationToken = default)
     {
         var chatResp = await _chatService.GetChatCompletionAsync(new ChatRequest(
