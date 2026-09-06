@@ -76,7 +76,8 @@ public class ConversationService : IConversationService
             UserId = userId.Value,
             Title = title,
             IsArchived = false,
-            ContextType = ContextType.Workspace
+            ContextType = request?.ContextType ?? ContextType.Workspace,
+            ContextEntityId = request?.ContextEntityId
         };
 
         _context.AiConversations.Add(conversation);
@@ -430,5 +431,79 @@ public class ConversationService : IConversationService
             UserMessage: userMsgDto,
             AssistantMessage: assistantMsgDto,
             Sources: sources));
+    }
+
+    public async Task<Result<ChatMessageDto>> AppendMessageAsync(
+        Guid workspaceId,
+        Guid conversationId,
+        string role,
+        string content,
+        IReadOnlyList<ChatSourceDto>? sources = null,
+        int? tokenCount = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUserService.UserId;
+        if (!userId.HasValue)
+        {
+            return Result.Failure<ChatMessageDto>(new Error("Auth.Unauthorized", "User is not authenticated."));
+        }
+
+        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        {
+            return Result.Failure<ChatMessageDto>(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
+        }
+
+        var conversation = await _context.AiConversations
+            .FirstOrDefaultAsync(c => c.Id == conversationId && c.WorkspaceId == workspaceId && c.UserId == userId.Value && !c.IsDeleted, cancellationToken);
+
+        if (conversation == null)
+        {
+            return Result.Failure<ChatMessageDto>(new Error("Conversation.NotFound", "Conversation not found."));
+        }
+
+        var aiRole = role.Equals("User", StringComparison.OrdinalIgnoreCase) ? AiRole.User : AiRole.Assistant;
+
+        var message = new AiMessage
+        {
+            ConversationId = conversation.Id,
+            Role = aiRole,
+            Content = content,
+            PromptTokens = tokenCount ?? 0,
+            CompletionTokens = 0,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        _context.AiMessages.Add(message);
+
+        var attachedSources = sources ?? Array.Empty<ChatSourceDto>();
+        foreach (var s in attachedSources)
+        {
+            var sourceEntity = new SourceReference
+            {
+                AiMessageId = message.Id,
+                DocumentId = s.DocumentId,
+                DocumentChunkId = s.DocumentChunkId,
+                PageId = s.PageId,
+                NoteId = s.NoteId,
+                SourceTitle = s.Title,
+                SourceType = s.SourceType,
+                Snippet = s.Snippet ?? string.Empty,
+                RelevanceScore = s.RelevanceScore,
+                PageNumber = s.PageNumber ?? 1
+            };
+            _context.SourceReferences.Add(sourceEntity);
+        }
+
+        conversation.UpdatedAtUtc = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Result.Success(new ChatMessageDto(
+            Id: message.Id,
+            ConversationId: conversation.Id,
+            Role: aiRole == AiRole.User ? "User" : "Assistant",
+            Content: message.Content,
+            CreatedAtUtc: message.CreatedAtUtc,
+            TokenCount: tokenCount,
+            Sources: attachedSources));
     }
 }

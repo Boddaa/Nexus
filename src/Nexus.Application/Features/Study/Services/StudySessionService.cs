@@ -54,7 +54,7 @@ public class StudySessionService : IStudySessionService
 
         var query = _context.StudySessions
             .AsNoTracking()
-            .Where(s => s.WorkspaceId == workspaceId && !s.IsDeleted);
+            .Where(s => s.WorkspaceId == workspaceId && s.UserId == userId.Value && !s.IsDeleted);
 
         if (topicId.HasValue)
         {
@@ -101,7 +101,7 @@ public class StudySessionService : IStudySessionService
 
         var session = await _context.StudySessions
             .AsNoTracking()
-            .Where(s => s.Id == sessionId && s.WorkspaceId == workspaceId && !s.IsDeleted)
+            .Where(s => s.Id == sessionId && s.WorkspaceId == workspaceId && s.UserId == userId.Value && !s.IsDeleted)
             .Select(s => new StudySessionDto(
                 s.Id,
                 s.WorkspaceId,
@@ -208,7 +208,7 @@ public class StudySessionService : IStudySessionService
         }
 
         var session = await _context.StudySessions
-            .FirstOrDefaultAsync(s => s.Id == sessionId && s.WorkspaceId == workspaceId && !s.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.WorkspaceId == workspaceId && s.UserId == userId.Value && !s.IsDeleted, cancellationToken);
 
         if (session == null)
         {

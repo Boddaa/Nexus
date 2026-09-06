@@ -118,6 +118,20 @@ public class QuizService : IQuizService
             return Result.Failure<QuizDetailDto>(new Error("Quiz.NotFound", "Quiz not found."));
         }
 
+        // Full answer key authorization: only quiz creator or workspace owner
+        var isCreator = quiz.UserId == userId.Value;
+        var isWorkspaceOwner = await _context.Workspaces
+            .AsNoTracking()
+            .AnyAsync(w => w.Id == workspaceId && w.OwnerId == userId.Value && !w.IsDeleted, cancellationToken)
+            || await _context.WorkspaceMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.WorkspaceId == workspaceId && m.UserId == userId.Value && m.Role == WorkspaceRole.Owner && !m.IsDeleted, cancellationToken);
+
+        if (!isCreator && !isWorkspaceOwner)
+        {
+            return Result.Failure<QuizDetailDto>(new Error("Quiz.AccessDenied", "Only the quiz creator or workspace administrators can view the full answer keys. Use the safe quiz view for study."));
+        }
+
         var questions = quiz.Questions
             .Where(qn => !qn.IsDeleted)
             .OrderBy(qn => qn.OrderIndex)
@@ -319,6 +333,21 @@ public class QuizService : IQuizService
             SourceNoteId = noteId
         };
 
+        var aiGen = new AiGeneration
+        {
+            WorkspaceId = workspaceId,
+            UserId = userId.Value,
+            SourceDocumentId = docId,
+            SourcePageId = pageId,
+            SourceNoteId = noteId,
+            Operation = "GenerateQuiz",
+            Content = $"Generated quiz with {parsedQuestions.Count} questions for {sourceTitle}.",
+            StructuredContentJson = llmResponse.Content,
+            Model = "llm"
+        };
+        _context.AiGenerations.Add(aiGen);
+        quiz.AiGenerationId = aiGen.Id;
+
         _context.Quizzes.Add(quiz);
 
         int order = 0;
@@ -426,7 +455,7 @@ public class QuizService : IQuizService
         var attempt = await _context.QuizAttempts
             .Include(a => a.Quiz)
                 .ThenInclude(q => q.Questions)
-            .FirstOrDefaultAsync(a => a.Id == attemptId && a.WorkspaceId == workspaceId && !a.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.WorkspaceId == workspaceId && a.UserId == userId.Value && !a.IsDeleted, cancellationToken);
 
         if (attempt == null)
         {
@@ -438,14 +467,35 @@ public class QuizService : IQuizService
             return Result.Failure<QuizAttemptResultDto>(new Error("QuizAttempt.AlreadyCompleted", "This quiz attempt has already been submitted and scored."));
         }
 
-        var questions = attempt.Quiz.Questions.Where(q => !q.IsDeleted).OrderBy(q => q.OrderIndex).ToList();
-        var submittedLookup = request.Answers?.ToDictionary(a => a.QuestionId, a => a.SubmittedAnswer)
-                              ?? new Dictionary<Guid, string>();
+        if (attempt.Quiz == null)
+        {
+            return Result.Failure<QuizAttemptResultDto>(new Error("QuizAttempt.InvalidQuiz", "Associated quiz could not be loaded."));
+        }
+
+        var authoritativeQuestions = attempt.Quiz.Questions.Where(q => !q.IsDeleted).OrderBy(q => q.OrderIndex).ToList();
+        var authoritativeQuestionIds = authoritativeQuestions.Select(q => q.Id).ToHashSet();
+
+        var submittedAnswers = request?.Answers ?? new List<SubmitQuizAnswerDto>();
+        var seenIds = new HashSet<Guid>();
+
+        foreach (var ans in submittedAnswers)
+        {
+            if (!seenIds.Add(ans.QuestionId))
+            {
+                return Result.Failure<QuizAttemptResultDto>(new Error("QuizAttempt.DuplicateQuestionId", $"Duplicate question ID submitted: {ans.QuestionId}."));
+            }
+            if (!authoritativeQuestionIds.Contains(ans.QuestionId))
+            {
+                return Result.Failure<QuizAttemptResultDto>(new Error("QuizAttempt.InvalidQuestionId", $"Submitted question ID {ans.QuestionId} does not belong to this quiz."));
+            }
+        }
+
+        var submittedLookup = submittedAnswers.ToDictionary(a => a.QuestionId, a => a.SubmittedAnswer);
 
         int correctCount = 0;
         var answerResults = new List<QuizAnswerResultDto>();
 
-        foreach (var qn in questions)
+        foreach (var qn in authoritativeQuestions)
         {
             submittedLookup.TryGetValue(qn.Id, out var submitted);
             submitted = submitted?.Trim() ?? string.Empty;
@@ -477,7 +527,7 @@ public class QuizService : IQuizService
         }
 
         var now = DateTime.UtcNow;
-        var total = questions.Count;
+        var total = authoritativeQuestions.Count;
         var scorePercentage = total > 0 ? Math.Round(((double)correctCount / total) * 100.0, 2) : 0.0;
 
         attempt.TotalQuestions = total;
@@ -488,7 +538,7 @@ public class QuizService : IQuizService
         attempt.CompletedAtUtc = now;
         attempt.UpdatedAtUtc = now;
         attempt.AiFeedback = $"Completed: {correctCount}/{total} correct ({scorePercentage:F1}%).";
-        attempt.AnswersJson = JsonSerializer.Serialize(request.Answers ?? new List<SubmitQuizAnswerDto>());
+        attempt.AnswersJson = JsonSerializer.Serialize(request?.Answers ?? new List<SubmitQuizAnswerDto>());
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -529,7 +579,7 @@ public class QuizService : IQuizService
             .AsNoTracking()
             .Include(a => a.Answers)
                 .ThenInclude(ans => ans.QuizQuestion)
-            .FirstOrDefaultAsync(a => a.Id == attemptId && a.WorkspaceId == workspaceId && !a.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.WorkspaceId == workspaceId && a.UserId == userId.Value && !a.IsDeleted, cancellationToken);
 
         if (attempt == null)
         {
@@ -589,6 +639,19 @@ public class QuizService : IQuizService
             return Result.Failure<bool>(new Error("Quiz.NotFound", "Quiz not found."));
         }
 
+        var isCreator = quiz.UserId == userId.Value;
+        var isWorkspaceOwner = await _context.Workspaces
+            .AsNoTracking()
+            .AnyAsync(w => w.Id == workspaceId && w.OwnerId == userId.Value && !w.IsDeleted, cancellationToken)
+            || await _context.WorkspaceMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.WorkspaceId == workspaceId && m.UserId == userId.Value && m.Role == WorkspaceRole.Owner && !m.IsDeleted, cancellationToken);
+
+        if (!isCreator && !isWorkspaceOwner)
+        {
+            return Result.Failure<bool>(new Error("Quiz.AccessDenied", "Only the quiz creator or workspace administrators can delete this quiz."));
+        }
+
         quiz.IsDeleted = true;
         quiz.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -646,6 +709,98 @@ public class QuizService : IQuizService
         }
     }
 
+    private async Task<Result<(string Title, string Content)>> BuildDocumentContextAsync(
+        Guid workspaceId,
+        Guid documentId,
+        int maxChars,
+        CancellationToken ct)
+    {
+        var doc = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.Id == documentId && d.WorkspaceId == workspaceId && !d.IsDeleted)
+            .Select(d => new { d.Id, d.Title, d.ExtractedText })
+            .FirstOrDefaultAsync(ct);
+
+        if (doc == null)
+        {
+            return Result.Failure<(string, string)>(new Error("Source.NotFound", "Document not found."));
+        }
+
+        var chunkQuery = _context.DocumentChunks
+            .AsNoTracking()
+            .Where(c => c.DocumentId == doc.Id && c.WorkspaceId == workspaceId && !c.IsDeleted);
+
+        var totalChunks = await chunkQuery.CountAsync(ct);
+        if (totalChunks == 0)
+        {
+            var rawText = doc.ExtractedText?.Trim() ?? string.Empty;
+            if (rawText.Length > maxChars) rawText = rawText.Substring(0, maxChars);
+            return Result.Success((doc.Title, rawText));
+        }
+
+        var totalTextLength = await chunkQuery.SumAsync(c => (int?)c.Text.Length, ct) ?? 0;
+        if (totalTextLength <= maxChars)
+        {
+            var allChunks = await chunkQuery
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
+                .Select(c => c.Text)
+                .ToListAsync(ct);
+
+            var fullContent = string.Join("\n\n", allChunks.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()));
+            return Result.Success((doc.Title, fullContent));
+        }
+
+        // Large document: select up to 5 representative chunks distributed across the document
+        int kRepresentatives = Math.Min(5, totalChunks);
+        var offsets = new List<int>();
+        for (int i = 0; i < kRepresentatives; i++)
+        {
+            int offset = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
+            offsets.Add(offset);
+        }
+
+        var uniqueOffsets = offsets.Distinct().OrderBy(x => x).ToList();
+        var representativeTexts = new List<string>();
+
+        foreach (var offset in uniqueOffsets)
+        {
+            var chunkText = await chunkQuery
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
+                .Skip(offset)
+                .Take(1)
+                .Select(c => c.Text)
+                .FirstOrDefaultAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(chunkText))
+            {
+                representativeTexts.Add(chunkText.Trim());
+            }
+        }
+
+        var sb = new StringBuilder();
+        for (int i = 0; i < representativeTexts.Count; i++)
+        {
+            var text = representativeTexts[i];
+            int remainingSlots = representativeTexts.Count - i;
+            int availableChars = maxChars - sb.Length;
+            if (availableChars <= 0) break;
+
+            int maxForThisChunk = Math.Min(text.Length, availableChars / remainingSlots);
+            if (maxForThisChunk <= 0) maxForThisChunk = availableChars;
+
+            string snippet = text.Length > maxForThisChunk
+                ? text.Substring(0, Math.Max(0, maxForThisChunk - 3)) + "..."
+                : text;
+
+            if (sb.Length > 0) sb.Append("\n\n");
+            sb.Append(snippet);
+        }
+
+        return Result.Success((doc.Title, sb.ToString()));
+    }
+
     private async Task<Result<(string Title, string Content, Guid? DocId, Guid? PageId, Guid? NoteId)>>
         ResolveSourceContentAsync(Guid workspaceId, string sourceType, Guid sourceId, CancellationToken ct)
     {
@@ -653,29 +808,9 @@ public class QuizService : IQuizService
 
         if (sourceType.Equals("Document", StringComparison.OrdinalIgnoreCase))
         {
-            var doc = await _context.Documents
-                .AsNoTracking()
-                .Where(d => d.Id == sourceId && d.WorkspaceId == workspaceId && !d.IsDeleted)
-                .Select(d => new { d.Id, d.Title, d.ExtractedText })
-                .FirstOrDefaultAsync(ct);
-
-            if (doc == null)
-            {
-                return Result.Failure<(string, string, Guid?, Guid?, Guid?)>(new Error("Source.NotFound", "Document not found."));
-            }
-
-            var chunks = await _context.DocumentChunks
-                .AsNoTracking()
-                .Where(c => c.DocumentId == doc.Id && c.WorkspaceId == workspaceId && !c.IsDeleted)
-                .OrderBy(c => c.ChunkIndex)
-                .Take(10)
-                .Select(c => c.Text)
-                .ToListAsync(ct);
-
-            var content = chunks.Count > 0 ? string.Join("\n\n", chunks) : (doc.ExtractedText ?? string.Empty);
-            if (content.Length > maxChars) content = content.Substring(0, maxChars);
-
-            return Result.Success((doc.Title, content, (Guid?)doc.Id, (Guid?)null, (Guid?)null));
+            var docRes = await BuildDocumentContextAsync(workspaceId, sourceId, maxChars, ct);
+            if (!docRes.IsSuccess) return Result.Failure<(string, string, Guid?, Guid?, Guid?)>(docRes.Error);
+            return Result.Success((docRes.Value.Title, docRes.Value.Content, (Guid?)sourceId, (Guid?)null, (Guid?)null));
         }
 
         if (sourceType.Equals("Page", StringComparison.OrdinalIgnoreCase))

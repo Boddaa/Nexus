@@ -377,6 +377,25 @@ public class FlashcardService : IFlashcardService
             createdEntities.Add(card);
         }
 
+        var aiGen = new AiGeneration
+        {
+            WorkspaceId = workspaceId,
+            UserId = userId.Value,
+            SourceDocumentId = docId,
+            SourcePageId = pageId,
+            SourceNoteId = noteId,
+            Operation = "GenerateFlashcards",
+            Content = $"Generated {createdEntities.Count} flashcards from {sourceTitle}.",
+            StructuredContentJson = llmResponse.Content,
+            Model = "llm"
+        };
+        _context.AiGenerations.Add(aiGen);
+
+        foreach (var card in createdEntities)
+        {
+            card.AiGenerationId = aiGen.Id;
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         var dtos = createdEntities.Select(MapToDto).ToList();
@@ -440,6 +459,98 @@ public class FlashcardService : IFlashcardService
         CreatedAtUtc: f.CreatedAtUtc
     );
 
+    private async Task<Result<(string Title, string Content)>> BuildDocumentContextAsync(
+        Guid workspaceId,
+        Guid documentId,
+        int maxChars,
+        CancellationToken ct)
+    {
+        var doc = await _context.Documents
+            .AsNoTracking()
+            .Where(d => d.Id == documentId && d.WorkspaceId == workspaceId && !d.IsDeleted)
+            .Select(d => new { d.Id, d.Title, d.ExtractedText })
+            .FirstOrDefaultAsync(ct);
+
+        if (doc == null)
+        {
+            return Result.Failure<(string, string)>(new Error("Source.NotFound", "Document not found."));
+        }
+
+        var chunkQuery = _context.DocumentChunks
+            .AsNoTracking()
+            .Where(c => c.DocumentId == doc.Id && c.WorkspaceId == workspaceId && !c.IsDeleted);
+
+        var totalChunks = await chunkQuery.CountAsync(ct);
+        if (totalChunks == 0)
+        {
+            var rawText = doc.ExtractedText?.Trim() ?? string.Empty;
+            if (rawText.Length > maxChars) rawText = rawText.Substring(0, maxChars);
+            return Result.Success((doc.Title, rawText));
+        }
+
+        var totalTextLength = await chunkQuery.SumAsync(c => (int?)c.Text.Length, ct) ?? 0;
+        if (totalTextLength <= maxChars)
+        {
+            var allChunks = await chunkQuery
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
+                .Select(c => c.Text)
+                .ToListAsync(ct);
+
+            var fullContent = string.Join("\n\n", allChunks.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()));
+            return Result.Success((doc.Title, fullContent));
+        }
+
+        // Large document: select up to 5 representative chunks distributed across the document
+        int kRepresentatives = Math.Min(5, totalChunks);
+        var offsets = new List<int>();
+        for (int i = 0; i < kRepresentatives; i++)
+        {
+            int offset = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
+            offsets.Add(offset);
+        }
+
+        var uniqueOffsets = offsets.Distinct().OrderBy(x => x).ToList();
+        var representativeTexts = new List<string>();
+
+        foreach (var offset in uniqueOffsets)
+        {
+            var chunkText = await chunkQuery
+                .OrderBy(c => c.StartPosition)
+                .ThenBy(c => c.ChunkIndex)
+                .Skip(offset)
+                .Take(1)
+                .Select(c => c.Text)
+                .FirstOrDefaultAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(chunkText))
+            {
+                representativeTexts.Add(chunkText.Trim());
+            }
+        }
+
+        var sb = new StringBuilder();
+        for (int i = 0; i < representativeTexts.Count; i++)
+        {
+            var text = representativeTexts[i];
+            int remainingSlots = representativeTexts.Count - i;
+            int availableChars = maxChars - sb.Length;
+            if (availableChars <= 0) break;
+
+            int maxForThisChunk = Math.Min(text.Length, availableChars / remainingSlots);
+            if (maxForThisChunk <= 0) maxForThisChunk = availableChars;
+
+            string snippet = text.Length > maxForThisChunk
+                ? text.Substring(0, Math.Max(0, maxForThisChunk - 3)) + "..."
+                : text;
+
+            if (sb.Length > 0) sb.Append("\n\n");
+            sb.Append(snippet);
+        }
+
+        return Result.Success((doc.Title, sb.ToString()));
+    }
+
     private async Task<Result<(string Title, string Content, Guid? DocId, Guid? PageId, Guid? NoteId)>>
         ResolveSourceContentAsync(Guid workspaceId, string sourceType, Guid sourceId, CancellationToken ct)
     {
@@ -447,29 +558,9 @@ public class FlashcardService : IFlashcardService
 
         if (sourceType.Equals("Document", StringComparison.OrdinalIgnoreCase))
         {
-            var doc = await _context.Documents
-                .AsNoTracking()
-                .Where(d => d.Id == sourceId && d.WorkspaceId == workspaceId && !d.IsDeleted)
-                .Select(d => new { d.Id, d.Title, d.ExtractedText })
-                .FirstOrDefaultAsync(ct);
-
-            if (doc == null)
-            {
-                return Result.Failure<(string, string, Guid?, Guid?, Guid?)>(new Error("Source.NotFound", "Document not found."));
-            }
-
-            var chunks = await _context.DocumentChunks
-                .AsNoTracking()
-                .Where(c => c.DocumentId == doc.Id && c.WorkspaceId == workspaceId && !c.IsDeleted)
-                .OrderBy(c => c.ChunkIndex)
-                .Take(10)
-                .Select(c => c.Text)
-                .ToListAsync(ct);
-
-            var content = chunks.Count > 0 ? string.Join("\n\n", chunks) : (doc.ExtractedText ?? string.Empty);
-            if (content.Length > maxChars) content = content.Substring(0, maxChars);
-
-            return Result.Success((doc.Title, content, (Guid?)doc.Id, (Guid?)null, (Guid?)null));
+            var docRes = await BuildDocumentContextAsync(workspaceId, sourceId, maxChars, ct);
+            if (!docRes.IsSuccess) return Result.Failure<(string, string, Guid?, Guid?, Guid?)>(docRes.Error);
+            return Result.Success((docRes.Value.Title, docRes.Value.Content, (Guid?)sourceId, (Guid?)null, (Guid?)null));
         }
 
         if (sourceType.Equals("Page", StringComparison.OrdinalIgnoreCase))

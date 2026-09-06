@@ -39,4 +39,13 @@ public interface IConversationService
         Guid conversationId,
         SendChatMessageRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<Result<ChatMessageDto>> AppendMessageAsync(
+        Guid workspaceId,
+        Guid conversationId,
+        string role,
+        string content,
+        IReadOnlyList<ChatSourceDto>? sources = null,
+        int? tokenCount = null,
+        CancellationToken cancellationToken = default);
 }

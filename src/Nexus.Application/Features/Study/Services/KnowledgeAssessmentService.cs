@@ -66,25 +66,50 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             return Result.Failure<TopicPerformanceDto>(new Error("Topic.NotFound", "Study topic not found."));
         }
 
-        var flashcards = await _context.Flashcards
+        var now = DateTime.UtcNow;
+
+        var cardStat = await _context.Flashcards
             .AsNoTracking()
             .Where(f => f.StudyTopicId == topicId && f.WorkspaceId == workspaceId && !f.IsDeleted)
-            .ToListAsync(cancellationToken);
+            .GroupBy(f => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Due = g.Count(f => f.NextReviewDateUtc <= now),
+                Reviewed = g.Count(f => f.ReviewCount > 0),
+                TotalReviews = g.Sum(f => f.ReviewCount),
+                TotalCorrect = g.Sum(f => f.CorrectCount)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        var quizzes = await _context.Quizzes
+        var totalQuizzes = await _context.Quizzes
             .AsNoTracking()
-            .Where(q => q.StudyTopicId == topicId && q.WorkspaceId == workspaceId && !q.IsDeleted)
-            .Select(q => q.Id)
-            .ToListAsync(cancellationToken);
+            .CountAsync(q => q.StudyTopicId == topicId && q.WorkspaceId == workspaceId && !q.IsDeleted, cancellationToken);
 
-        var attempts = quizzes.Count > 0
-            ? await _context.QuizAttempts
-                .AsNoTracking()
-                .Where(a => quizzes.Contains(a.QuizId) && a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted)
-                .ToListAsync(cancellationToken)
-            : new List<Nexus.Domain.Entities.QuizAttempt>();
+        var attemptStat = await _context.QuizAttempts
+            .AsNoTracking()
+            .Where(a => a.Quiz.StudyTopicId == topicId && a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted)
+            .GroupBy(a => 1)
+            .Select(g => new
+            {
+                Count = g.Count(),
+                AvgScore = g.Average(a => a.ScorePercentage)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        var performance = CalculatePerformance(topic.Id, topic.Title, flashcards, quizzes.Count, attempts);
+        var performance = CalculatePerformance(
+            topic.Id,
+            topic.Title,
+            cardStat?.Total ?? 0,
+            cardStat?.Due ?? 0,
+            cardStat?.Reviewed ?? 0,
+            cardStat?.TotalReviews ?? 0,
+            cardStat?.TotalCorrect ?? 0,
+            totalQuizzes,
+            attemptStat?.Count ?? 0,
+            attemptStat?.AvgScore ?? 0.0
+        );
+
         return Result.Success(performance);
     }
 
@@ -104,22 +129,45 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             return Result.Failure<KnowledgeAssessmentDto>(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
         }
 
-        var topics = await _context.StudyTopics
+        var now = DateTime.UtcNow;
+
+        var topicQuery = _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted);
+
+        if (topicId.HasValue)
+        {
+            topicQuery = topicQuery.Where(t => t.Id == topicId.Value);
+        }
+
+        var topics = await topicQuery
             .Select(t => new { t.Id, t.Title })
             .ToListAsync(cancellationToken);
 
-        var flashcardQuery = _context.Flashcards
+        var cardQuery = _context.Flashcards
             .AsNoTracking()
             .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted);
 
         if (topicId.HasValue)
         {
-            flashcardQuery = flashcardQuery.Where(f => f.StudyTopicId == topicId.Value);
+            cardQuery = cardQuery.Where(f => f.StudyTopicId == topicId.Value);
         }
 
-        var allFlashcards = await flashcardQuery.ToListAsync(cancellationToken);
+        var cardStatsList = await cardQuery
+            .Where(f => f.StudyTopicId != null)
+            .GroupBy(f => f.StudyTopicId!.Value)
+            .Select(g => new
+            {
+                TopicId = g.Key,
+                Total = g.Count(),
+                Due = g.Count(f => f.NextReviewDateUtc <= now),
+                Reviewed = g.Count(f => f.ReviewCount > 0),
+                TotalReviews = g.Sum(f => f.ReviewCount),
+                TotalCorrect = g.Sum(f => f.CorrectCount)
+            })
+            .ToListAsync(cancellationToken);
+
+        var cardStatsByTopic = cardStatsList.ToDictionary(x => x.TopicId);
 
         var quizQuery = _context.Quizzes
             .AsNoTracking()
@@ -130,50 +178,78 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             quizQuery = quizQuery.Where(q => q.StudyTopicId == topicId.Value);
         }
 
-        var allQuizzes = await quizQuery.ToListAsync(cancellationToken);
-        var quizIds = allQuizzes.Select(q => q.Id).ToHashSet();
+        var quizCountsList = await quizQuery
+            .Where(q => q.StudyTopicId != null)
+            .GroupBy(q => q.StudyTopicId!.Value)
+            .Select(g => new { TopicId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
 
-        var allAttempts = quizIds.Count > 0
-            ? await _context.QuizAttempts
-                .AsNoTracking()
-                .Where(a => quizIds.Contains(a.QuizId) && a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted)
-                .ToListAsync(cancellationToken)
-            : new List<Nexus.Domain.Entities.QuizAttempt>();
+        var quizCountsByTopic = quizCountsList.ToDictionary(x => x.TopicId, x => x.Count);
+
+        var attemptQuery = _context.QuizAttempts
+            .AsNoTracking()
+            .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted);
+
+        if (topicId.HasValue)
+        {
+            attemptQuery = attemptQuery.Where(a => a.Quiz.StudyTopicId == topicId.Value);
+        }
+
+        var attemptStatsList = await attemptQuery
+            .Where(a => a.Quiz.StudyTopicId != null)
+            .GroupBy(a => a.Quiz.StudyTopicId!.Value)
+            .Select(g => new
+            {
+                TopicId = g.Key,
+                Count = g.Count(),
+                AvgScore = g.Average(a => a.ScorePercentage)
+            })
+            .ToListAsync(cancellationToken);
+
+        var attemptStatsByTopic = attemptStatsList.ToDictionary(x => x.TopicId);
 
         var topicPerformances = new List<TopicPerformanceDto>();
-        var relevantTopics = topicId.HasValue ? topics.Where(t => t.Id == topicId.Value).ToList() : topics;
-
-        foreach (var t in relevantTopics)
+        foreach (var t in topics)
         {
-            var tCards = allFlashcards.Where(f => f.StudyTopicId == t.Id).ToList();
-            var tQuizCount = allQuizzes.Count(q => q.StudyTopicId == t.Id);
-            var tQuizIds = allQuizzes.Where(q => q.StudyTopicId == t.Id).Select(q => q.Id).ToHashSet();
-            var tAttempts = allAttempts.Where(a => tQuizIds.Contains(a.QuizId)).ToList();
+            cardStatsByTopic.TryGetValue(t.Id, out var cs);
+            quizCountsByTopic.TryGetValue(t.Id, out var qc);
+            attemptStatsByTopic.TryGetValue(t.Id, out var att);
 
-            topicPerformances.Add(CalculatePerformance(t.Id, t.Title, tCards, tQuizCount, tAttempts));
+            topicPerformances.Add(CalculatePerformance(
+                t.Id,
+                t.Title,
+                cs?.Total ?? 0,
+                cs?.Due ?? 0,
+                cs?.Reviewed ?? 0,
+                cs?.TotalReviews ?? 0,
+                cs?.TotalCorrect ?? 0,
+                qc,
+                att?.Count ?? 0,
+                att?.AvgScore ?? 0.0
+            ));
         }
 
         var strongAreas = topicPerformances.Where(p => p.MasteryLevel == "Strong").ToList();
         var weakAreas = topicPerformances.Where(p => p.MasteryLevel == "Weak").ToList();
         var developingAreas = topicPerformances.Where(p => p.MasteryLevel == "Developing").ToList();
 
-        var totalReviews = allFlashcards.Sum(f => f.ReviewCount);
-        var totalCorrect = allFlashcards.Sum(f => f.CorrectCount);
+        var totalFlashcards = await cardQuery.CountAsync(cancellationToken);
+        var dueFlashcards = await cardQuery.CountAsync(f => f.NextReviewDateUtc <= now, cancellationToken);
+        var totalQuizzes = await quizQuery.CountAsync(cancellationToken);
+        var totalAttempts = await attemptQuery.CountAsync(cancellationToken);
+
+        var workspaceCardTotals = await cardQuery
+            .Where(f => f.ReviewCount > 0)
+            .GroupBy(f => 1)
+            .Select(g => new { TotalReviews = g.Sum(f => f.ReviewCount), TotalCorrect = g.Sum(f => f.CorrectCount) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var totalReviews = workspaceCardTotals?.TotalReviews ?? 0;
+        var totalCorrect = workspaceCardTotals?.TotalCorrect ?? 0;
         var overallAccuracy = totalReviews > 0 ? Math.Round(((double)totalCorrect / totalReviews) * 100.0, 2) : 0.0;
 
-        double overallMastery;
-        if (topicPerformances.Count > 0)
-        {
-            overallMastery = Math.Round(topicPerformances.Average(tp => tp.MasteryPercentage), 2);
-        }
-        else
-        {
-            var avgQuiz = allAttempts.Count > 0 ? allAttempts.Average(a => a.ScorePercentage) : 0.0;
-            overallMastery = Math.Round(CalculateBlendedMastery(overallAccuracy, avgQuiz, totalReviews > 0, allAttempts.Count > 0), 2);
-        }
-
-        var now = DateTime.UtcNow;
-        var dueFlashcards = allFlashcards.Count(f => f.NextReviewDateUtc <= now);
+        var overallQuizAvg = totalAttempts > 0 ? Math.Round(await attemptQuery.AverageAsync(a => a.ScorePercentage, cancellationToken), 2) : 0.0;
+        var overallMastery = Math.Round(CalculateBlendedMastery(overallAccuracy, overallQuizAvg, totalReviews > 0, totalAttempts > 0), 2);
 
         var recommendations = new List<string>();
         if (dueFlashcards > 0)
@@ -199,10 +275,10 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             TopicId: topicId,
             OverallMasteryPercentage: overallMastery,
             OverallAccuracy: overallAccuracy,
-            TotalFlashcards: allFlashcards.Count,
+            TotalFlashcards: totalFlashcards,
             DueFlashcards: dueFlashcards,
-            TotalQuizzes: allQuizzes.Count,
-            TotalAttempts: allAttempts.Count,
+            TotalQuizzes: totalQuizzes,
+            TotalAttempts: totalAttempts,
             StrongAreas: strongAreas,
             WeakAreas: weakAreas,
             DevelopingAreas: developingAreas,
@@ -231,23 +307,21 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             .AsNoTracking()
             .CountAsync(t => t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
 
-        var sessions = await _context.StudySessions
+        var sessionQuery = _context.StudySessions
             .AsNoTracking()
-            .Where(s => s.WorkspaceId == workspaceId && !s.IsDeleted)
-            .ToListAsync(cancellationToken);
+            .Where(s => s.WorkspaceId == workspaceId && !s.IsDeleted);
 
-        var totalSessions = sessions.Count;
-        var totalStudyMinutes = sessions.Sum(s => s.DurationMinutes);
+        var totalSessions = await sessionQuery.CountAsync(cancellationToken);
+        var totalStudyMinutes = await sessionQuery.SumAsync(s => s.DurationMinutes, cancellationToken);
 
-        var flashcards = await _context.Flashcards
+        var flashcardQuery = _context.Flashcards
             .AsNoTracking()
-            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted)
-            .ToListAsync(cancellationToken);
+            .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted);
 
-        var totalFlashcards = flashcards.Count;
-        var dueFlashcards = flashcards.Count(f => f.NextReviewDateUtc <= now);
+        var totalFlashcards = await flashcardQuery.CountAsync(cancellationToken);
+        var dueFlashcards = await flashcardQuery.CountAsync(f => f.NextReviewDateUtc <= now, cancellationToken);
 
-        var duePreview = flashcards
+        var duePreview = await flashcardQuery
             .Where(f => f.NextReviewDateUtc <= now)
             .OrderBy(f => f.NextReviewDateUtc)
             .Take(5)
@@ -259,44 +333,107 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
                 f.SourceDocumentId, f.SourceDocumentChunkId, f.SourcePageId, f.SourceNoteId, f.AiGenerationId,
                 f.CreatedAtUtc
             ))
-            .ToList();
-
-        var quizzes = await _context.Quizzes
-            .AsNoTracking()
-            .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted)
             .ToListAsync(cancellationToken);
 
-        var totalQuizzes = quizzes.Count;
+        var quizQuery = _context.Quizzes
+            .AsNoTracking()
+            .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted);
 
-        var quizIds = quizzes.Select(q => q.Id).ToHashSet();
-        var attempts = quizIds.Count > 0
-            ? await _context.QuizAttempts
-                .AsNoTracking()
-                .Where(a => quizIds.Contains(a.QuizId) && a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted)
-                .ToListAsync(cancellationToken)
-            : new List<Nexus.Domain.Entities.QuizAttempt>();
+        var totalQuizzes = await quizQuery.CountAsync(cancellationToken);
 
-        var completedAttempts = attempts.Count;
-        var averageQuizScore = completedAttempts > 0 ? Math.Round(attempts.Average(a => a.ScorePercentage), 2) : 0.0;
+        var attemptQuery = _context.QuizAttempts
+            .AsNoTracking()
+            .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted);
 
-        var assessmentResult = await GetAssessmentAsync(workspaceId, null, cancellationToken);
-        var overallMastery = assessmentResult.IsSuccess ? assessmentResult.Value.OverallMasteryPercentage : 0.0;
+        var completedAttempts = await attemptQuery.CountAsync(cancellationToken);
+        var averageQuizScore = completedAttempts > 0 ? Math.Round(await attemptQuery.AverageAsync(a => a.ScorePercentage, cancellationToken), 2) : 0.0;
 
-        var recentTopicsPerformance = new List<TopicPerformanceDto>();
+        var cardReviewStats = await flashcardQuery
+            .Where(f => f.ReviewCount > 0)
+            .GroupBy(f => 1)
+            .Select(g => new { TotalReviews = g.Sum(f => f.ReviewCount), TotalCorrect = g.Sum(f => f.CorrectCount) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var totalReviews = cardReviewStats?.TotalReviews ?? 0;
+        var totalCorrect = cardReviewStats?.TotalCorrect ?? 0;
+        var cardAccuracy = totalReviews > 0 ? Math.Round(((double)totalCorrect / totalReviews) * 100.0, 2) : 0.0;
+        var overallMastery = Math.Round(CalculateBlendedMastery(cardAccuracy, averageQuizScore, totalReviews > 0, completedAttempts > 0), 2);
+
         var recentTopics = await _context.StudyTopics
             .AsNoTracking()
             .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted)
             .OrderByDescending(t => t.UpdatedAtUtc ?? t.CreatedAtUtc)
             .Take(5)
+            .Select(t => new { t.Id, t.Title })
             .ToListAsync(cancellationToken);
 
+        var recentTopicIds = recentTopics.Select(t => t.Id).ToList();
+
+        var recentCardStatsList = recentTopicIds.Count > 0
+            ? await _context.Flashcards
+                .AsNoTracking()
+                .Where(f => f.WorkspaceId == workspaceId && !f.IsDeleted && f.StudyTopicId != null && recentTopicIds.Contains(f.StudyTopicId.Value))
+                .GroupBy(f => f.StudyTopicId!.Value)
+                .Select(g => new
+                {
+                    TopicId = g.Key,
+                    Total = g.Count(),
+                    Due = g.Count(f => f.NextReviewDateUtc <= now),
+                    Reviewed = g.Count(f => f.ReviewCount > 0),
+                    TotalReviews = g.Sum(f => f.ReviewCount),
+                    TotalCorrect = g.Sum(f => f.CorrectCount)
+                })
+                .ToListAsync(cancellationToken)
+            : new();
+
+        var recentCardStats = recentCardStatsList.ToDictionary(x => x.TopicId);
+
+        var recentQuizCountsList = recentTopicIds.Count > 0
+            ? await _context.Quizzes
+                .AsNoTracking()
+                .Where(q => q.WorkspaceId == workspaceId && !q.IsDeleted && q.StudyTopicId != null && recentTopicIds.Contains(q.StudyTopicId.Value))
+                .GroupBy(q => q.StudyTopicId!.Value)
+                .Select(g => new { TopicId = g.Key, Count = g.Count() })
+                .ToListAsync(cancellationToken)
+            : new();
+
+        var recentQuizCounts = recentQuizCountsList.ToDictionary(x => x.TopicId, x => x.Count);
+
+        var recentAttemptStatsList = recentTopicIds.Count > 0
+            ? await _context.QuizAttempts
+                .AsNoTracking()
+                .Where(a => a.WorkspaceId == workspaceId && a.IsCompleted && !a.IsDeleted && a.Quiz.StudyTopicId != null && recentTopicIds.Contains(a.Quiz.StudyTopicId.Value))
+                .GroupBy(a => a.Quiz.StudyTopicId!.Value)
+                .Select(g => new
+                {
+                    TopicId = g.Key,
+                    Count = g.Count(),
+                    AvgScore = g.Average(a => a.ScorePercentage)
+                })
+                .ToListAsync(cancellationToken)
+            : new();
+
+        var recentAttemptStats = recentAttemptStatsList.ToDictionary(x => x.TopicId);
+
+        var recentTopicsPerformance = new List<TopicPerformanceDto>();
         foreach (var rt in recentTopics)
         {
-            var tCards = flashcards.Where(f => f.StudyTopicId == rt.Id).ToList();
-            var tQuizCount = quizzes.Count(q => q.StudyTopicId == rt.Id);
-            var tQuizIds = quizzes.Where(q => q.StudyTopicId == rt.Id).Select(q => q.Id).ToHashSet();
-            var tAttempts = attempts.Where(a => tQuizIds.Contains(a.QuizId)).ToList();
-            recentTopicsPerformance.Add(CalculatePerformance(rt.Id, rt.Title, tCards, tQuizCount, tAttempts));
+            recentCardStats.TryGetValue(rt.Id, out var cs);
+            recentQuizCounts.TryGetValue(rt.Id, out var qc);
+            recentAttemptStats.TryGetValue(rt.Id, out var att);
+
+            recentTopicsPerformance.Add(CalculatePerformance(
+                rt.Id,
+                rt.Title,
+                cs?.Total ?? 0,
+                cs?.Due ?? 0,
+                cs?.Reviewed ?? 0,
+                cs?.TotalReviews ?? 0,
+                cs?.TotalCorrect ?? 0,
+                qc,
+                att?.Count ?? 0,
+                att?.AvgScore ?? 0.0
+            ));
         }
 
         return Result.Success(new StudyDashboardDto(
@@ -317,26 +454,22 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
     private TopicPerformanceDto CalculatePerformance(
         Guid topicId,
         string topicTitle,
-        IReadOnlyList<Nexus.Domain.Entities.Flashcard> flashcards,
+        int totalCards,
+        int dueCards,
+        int reviewedCards,
+        int totalReviews,
+        int totalCorrect,
         int totalQuizzes,
-        IReadOnlyList<Nexus.Domain.Entities.QuizAttempt> attempts)
+        int completedAttempts,
+        double avgQuizScore)
     {
-        var now = DateTime.UtcNow;
-        var totalCards = flashcards.Count;
-        var dueCards = flashcards.Count(f => f.NextReviewDateUtc <= now);
-        var reviewedCards = flashcards.Count(f => f.ReviewCount > 0);
-
-        var totalReviews = flashcards.Sum(f => f.ReviewCount);
-        var totalCorrect = flashcards.Sum(f => f.CorrectCount);
         var cardAccuracy = totalReviews > 0 ? Math.Round(((double)totalCorrect / totalReviews) * 100.0, 2) : 0.0;
-
-        var completedAttempts = attempts.Count;
-        var avgQuizScore = completedAttempts > 0 ? Math.Round(attempts.Average(a => a.ScorePercentage), 2) : 0.0;
+        var avgQuizRounded = completedAttempts > 0 ? Math.Round(avgQuizScore, 2) : 0.0;
 
         var hasCardData = totalReviews > 0;
         var hasQuizData = completedAttempts > 0;
 
-        var mastery = Math.Round(CalculateBlendedMastery(cardAccuracy, avgQuizScore, hasCardData, hasQuizData), 2);
+        var mastery = Math.Round(CalculateBlendedMastery(cardAccuracy, avgQuizRounded, hasCardData, hasQuizData), 2);
 
         string level;
         if (mastery >= _options.StrongMasteryThreshold)
@@ -361,7 +494,7 @@ public class KnowledgeAssessmentService : IKnowledgeAssessmentService
             FlashcardAccuracy: cardAccuracy,
             TotalQuizzes: totalQuizzes,
             CompletedAttempts: completedAttempts,
-            AverageQuizScore: avgQuizScore,
+            AverageQuizScore: avgQuizRounded,
             MasteryPercentage: mastery,
             MasteryLevel: level
         );

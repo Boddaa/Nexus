@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.Study;
 using Nexus.Application.DTOs.Workspaces;
+using Nexus.Domain.Entities;
 using Nexus.Domain.Enums;
+using Nexus.Infrastructure.Persistence;
 using Xunit;
 
 namespace Nexus.API.Tests;
@@ -174,5 +177,121 @@ public class StudyEndpointsTests : IClassFixture<AiMockWebApplicationFactory>
         Assert.False(string.IsNullOrWhiteSpace(tutorResponse.AssistantMessage));
         Assert.NotNull(tutorResponse.KeyTakeaways);
         Assert.NotNull(tutorResponse.FollowUpSuggestions);
+    }
+
+    [Fact]
+    public async Task QuizAttempt_UserIsolation_UserACannotSubmitUserBAttempt_ReturnsNotFound()
+    {
+        var (clientAlice, userAlice, workspaceAlice) = await CreateUserAndWorkspaceAsync("quiz_iso_a");
+        var (clientBob, userBob, _) = await CreateUserAndWorkspaceAsync("quiz_iso_b");
+
+        // Seed Quiz and add Bob as WorkspaceMember
+        Guid quizId;
+        Guid qnId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var quiz = new Quiz { WorkspaceId = workspaceAlice.Id, UserId = userAlice.UserId, Title = "API Isolation Quiz" };
+            var qn = new QuizQuestion { Quiz = quiz, QuestionText = "Is isolation secure?", CorrectAnswer = "Yes", OptionsJson = "[\"Yes\"]" };
+            db.Quizzes.Add(quiz);
+            db.QuizQuestions.Add(qn);
+            db.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = workspaceAlice.Id, UserId = userBob.UserId, Role = WorkspaceRole.Editor });
+            db.SaveChanges();
+
+            quizId = quiz.Id;
+            qnId = qn.Id;
+        }
+
+        // Alice starts the quiz attempt
+        var startRes = await clientAlice.PostAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}/attempts", null);
+        Assert.Equal(HttpStatusCode.OK, startRes.StatusCode);
+
+        var startData = await startRes.Content.ReadFromJsonAsync<QuizAttemptResultDto>();
+        Assert.NotNull(startData);
+        var attemptId = startData.AttemptId;
+
+        // Bob tries to submit Alice's attempt -> Should return 404 (QuizAttempt.NotFound due to user mismatch)
+        var submitReq = new SubmitQuizAttemptRequest(new List<SubmitQuizAnswerDto>
+        {
+            new(qnId, "Yes")
+        });
+        var bobSubmitRes = await clientBob.PostAsJsonAsync($"/api/workspaces/{workspaceAlice.Id}/study/attempts/{attemptId}/submit", submitReq);
+        Assert.Equal(HttpStatusCode.NotFound, bobSubmitRes.StatusCode);
+
+        // Bob tries to view Alice's attempt result -> Should return 404
+        var bobGetRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/attempts/{attemptId}");
+        Assert.Equal(HttpStatusCode.NotFound, bobGetRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task QuizSubmission_RejectsInvalidQuestionId_ReturnsBadRequest()
+    {
+        var (client, user, workspace) = await CreateUserAndWorkspaceAsync("quiz_invalid_q");
+
+        Guid quizId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var quiz = new Quiz { WorkspaceId = workspace.Id, UserId = user.UserId, Title = "Validation Test Quiz" };
+            var qn = new QuizQuestion { Quiz = quiz, QuestionText = "Q?", CorrectAnswer = "A", OptionsJson = "[\"A\"]" };
+            db.Quizzes.Add(quiz);
+            db.QuizQuestions.Add(qn);
+            db.SaveChanges();
+            quizId = quiz.Id;
+        }
+
+        var startRes = await client.PostAsync($"/api/workspaces/{workspace.Id}/study/quizzes/{quizId}/attempts", null);
+        Assert.Equal(HttpStatusCode.OK, startRes.StatusCode);
+        var startData = await startRes.Content.ReadFromJsonAsync<QuizAttemptResultDto>();
+        Assert.NotNull(startData);
+
+        // Submit with non-existent question ID
+        var fakeQnId = Guid.NewGuid();
+        var submitReq = new SubmitQuizAttemptRequest(new List<SubmitQuizAnswerDto>
+        {
+            new(fakeQnId, "A")
+        });
+
+        var submitRes = await client.PostAsJsonAsync($"/api/workspaces/{workspace.Id}/study/attempts/{startData.AttemptId}/submit", submitReq);
+        Assert.Equal(HttpStatusCode.BadRequest, submitRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task Quiz_SafeVsFullDetail_Authorization_Enforced()
+    {
+        var (clientAlice, userAlice, workspaceAlice) = await CreateUserAndWorkspaceAsync("quiz_auth_a");
+        var (clientBob, userBob, _) = await CreateUserAndWorkspaceAsync("quiz_auth_b");
+
+        Guid quizId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var quiz = new Quiz { WorkspaceId = workspaceAlice.Id, UserId = userAlice.UserId, Title = "Answer Key Protection Quiz" };
+            var qn = new QuizQuestion { Quiz = quiz, QuestionText = "Secret Q?", CorrectAnswer = "TopSecretAnswer", OptionsJson = "[\"TopSecretAnswer\"]" };
+            db.Quizzes.Add(quiz);
+            db.QuizQuestions.Add(qn);
+            db.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = workspaceAlice.Id, UserId = userBob.UserId, Role = WorkspaceRole.Editor });
+            db.SaveChanges();
+            quizId = quiz.Id;
+        }
+
+        // 1. Bob requests safe quiz -> 200 OK, questions are safe
+        var safeRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}?safe=true");
+        Assert.Equal(HttpStatusCode.OK, safeRes.StatusCode);
+        var safeQuiz = await safeRes.Content.ReadFromJsonAsync<SafeQuizDetailDto>();
+        Assert.NotNull(safeQuiz);
+        Assert.Single(safeQuiz.Questions);
+        Assert.Equal("Secret Q?", safeQuiz.Questions[0].QuestionText);
+
+        // 2. Bob requests full quiz (safe=false) -> 401 Unauthorized (Quiz.AccessDenied)
+        var bobFullRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}?safe=false");
+        Assert.Equal(HttpStatusCode.Unauthorized, bobFullRes.StatusCode);
+
+        // 3. Alice (creator & workspace owner) requests full quiz (safe=false) -> 200 OK with answer key
+        var aliceFullRes = await clientAlice.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}?safe=false");
+        Assert.Equal(HttpStatusCode.OK, aliceFullRes.StatusCode);
+        var fullQuiz = await aliceFullRes.Content.ReadFromJsonAsync<QuizDetailDto>();
+        Assert.NotNull(fullQuiz);
+        Assert.Equal("TopSecretAnswer", fullQuiz.Questions[0].CorrectAnswer);
     }
 }

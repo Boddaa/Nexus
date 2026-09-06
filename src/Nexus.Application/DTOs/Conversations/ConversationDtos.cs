@@ -11,7 +11,9 @@ public record ConversationDto(
     int MessageCount);
 
 public record CreateConversationRequest(
-    string? Title = null);
+    string? Title = null,
+    Nexus.Domain.Enums.ContextType? ContextType = null,
+    Guid? ContextEntityId = null);
 
 public record UpdateConversationRequest(
     string Title,

@@ -9,6 +9,7 @@ using Nexus.Application.Common.Models;
 using Nexus.Application.Common.Options;
 using Nexus.Application.DTOs.Conversations;
 using Nexus.Application.DTOs.Study;
+using Nexus.Application.Features.Conversations.Services;
 using Nexus.Domain.Common;
 using Nexus.Domain.Entities;
 using Nexus.Domain.Enums;
@@ -19,6 +20,7 @@ public class AiTutorService : IAiTutorService
 {
     private readonly IAppDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IConversationService _conversationService;
     private readonly ILLMService? _llmService;
     private readonly IRagService? _ragService;
     private readonly IKnowledgeAssessmentService _assessmentService;
@@ -28,6 +30,7 @@ public class AiTutorService : IAiTutorService
     public AiTutorService(
         IAppDbContext context,
         ICurrentUserService currentUserService,
+        IConversationService conversationService,
         IKnowledgeAssessmentService assessmentService,
         IOptions<StudyOptions> options,
         ILogger<AiTutorService> logger,
@@ -36,6 +39,7 @@ public class AiTutorService : IAiTutorService
     {
         _context = context;
         _currentUserService = currentUserService;
+        _conversationService = conversationService;
         _assessmentService = assessmentService;
         _options = options?.Value ?? new StudyOptions();
         _logger = logger;
@@ -82,30 +86,29 @@ public class AiTutorService : IAiTutorService
         }
 
         // 1. Resolve or create AiConversation with ContextType.Study
-        AiConversation? conversation;
+        Guid conversationId;
         if (request.ConversationId.HasValue)
         {
-            conversation = await _context.AiConversations
-                .Include(c => c.Messages)
-                .FirstOrDefaultAsync(c => c.Id == request.ConversationId.Value && c.WorkspaceId == workspaceId && !c.IsDeleted, cancellationToken);
-
-            if (conversation == null)
+            var convRes = await _conversationService.GetConversationAsync(workspaceId, request.ConversationId.Value, cancellationToken);
+            if (!convRes.IsSuccess)
             {
                 return Result.Failure<TutorResponseDto>(new Error("Conversation.NotFound", "Study conversation not found."));
             }
+            conversationId = convRes.Value.Id;
         }
         else
         {
             // Check if there is an existing active study conversation for this topic
             var existing = await _context.AiConversations
-                .Include(c => c.Messages)
+                .AsNoTracking()
                 .Where(c => c.WorkspaceId == workspaceId && c.UserId == userId.Value && c.ContextType == ContextType.Study && c.ContextEntityId == request.StudyTopicId && !c.IsDeleted)
                 .OrderByDescending(c => c.UpdatedAtUtc ?? c.CreatedAtUtc)
+                .Select(c => (Guid?)c.Id)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (existing != null)
+            if (existing.HasValue)
             {
-                conversation = existing;
+                conversationId = existing.Value;
             }
             else
             {
@@ -113,7 +116,8 @@ public class AiTutorService : IAiTutorService
                 if (request.StudyTopicId.HasValue)
                 {
                     var topicTitle = await _context.StudyTopics
-                        .Where(t => t.Id == request.StudyTopicId.Value)
+                        .AsNoTracking()
+                        .Where(t => t.Id == request.StudyTopicId.Value && t.WorkspaceId == workspaceId && !t.IsDeleted)
                         .Select(t => t.Title)
                         .FirstOrDefaultAsync(cancellationToken);
                     if (!string.IsNullOrWhiteSpace(topicTitle))
@@ -122,18 +126,17 @@ public class AiTutorService : IAiTutorService
                     }
                 }
 
-                conversation = new AiConversation
-                {
-                    WorkspaceId = workspaceId,
-                    UserId = userId.Value,
-                    Title = title,
-                    ContextType = ContextType.Study,
-                    ContextEntityId = request.StudyTopicId,
-                    IsArchived = false
-                };
+                var createRes = await _conversationService.CreateConversationAsync(
+                    workspaceId,
+                    new CreateConversationRequest(title, ContextType.Study, request.StudyTopicId),
+                    cancellationToken);
 
-                _context.AiConversations.Add(conversation);
-                await _context.SaveChangesAsync(cancellationToken);
+                if (!createRes.IsSuccess)
+                {
+                    return Result.Failure<TutorResponseDto>(createRes.Error);
+                }
+
+                conversationId = createRes.Value.Id;
             }
         }
 
@@ -183,16 +186,16 @@ public class AiTutorService : IAiTutorService
             systemSb.AppendLine($"Student Performance Context: {performanceSnippet}");
         }
 
-        var messageHistory = new List<LLMChatMessage>();
-        var priorMessages = conversation.Messages
-            .Where(m => !m.IsDeleted)
+        var messagesRes = await _conversationService.GetConversationMessagesAsync(workspaceId, conversationId, cancellationToken);
+        var priorMessages = (messagesRes.IsSuccess ? messagesRes.Value : Array.Empty<ChatMessageDto>())
             .OrderBy(m => m.CreatedAtUtc)
             .TakeLast(6)
             .ToList();
 
+        var messageHistory = new List<LLMChatMessage>();
         foreach (var m in priorMessages)
         {
-            var roleStr = m.Role == AiRole.User ? "user" : "assistant";
+            var roleStr = m.Role.Equals("User", StringComparison.OrdinalIgnoreCase) ? "user" : "assistant";
             messageHistory.Add(new LLMChatMessage(roleStr, m.Content));
         }
 
@@ -217,32 +220,27 @@ public class AiTutorService : IAiTutorService
 
         var (cleanAnswer, takeaways, followUps) = ParseTutorResponse(llmResponse.Content);
 
-        // 5. Persist user message and assistant message
-        var now = DateTime.UtcNow;
-        var userMsg = new AiMessage
-        {
-            ConversationId = conversation.Id,
-            Role = AiRole.User,
-            Content = request.Message,
-            CreatedAtUtc = now
-        };
+        // 5. Persist user message and assistant message via IConversationService
+        await _conversationService.AppendMessageAsync(
+            workspaceId,
+            conversationId,
+            "User",
+            request.Message,
+            null,
+            null,
+            cancellationToken);
 
-        var assistantMsg = new AiMessage
-        {
-            ConversationId = conversation.Id,
-            Role = AiRole.Assistant,
-            Content = cleanAnswer,
-            CreatedAtUtc = now.AddMilliseconds(100)
-        };
-
-        _context.AiMessages.Add(userMsg);
-        _context.AiMessages.Add(assistantMsg);
-
-        conversation.UpdatedAtUtc = now;
-        await _context.SaveChangesAsync(cancellationToken);
+        await _conversationService.AppendMessageAsync(
+            workspaceId,
+            conversationId,
+            "Assistant",
+            cleanAnswer,
+            sources,
+            llmResponse.TotalTokens,
+            cancellationToken);
 
         return Result.Success(new TutorResponseDto(
-            ConversationId: conversation.Id,
+            ConversationId: conversationId,
             AssistantMessage: cleanAnswer,
             Sources: sources,
             KeyTakeaways: takeaways,
