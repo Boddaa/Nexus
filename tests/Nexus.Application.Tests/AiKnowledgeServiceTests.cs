@@ -526,4 +526,296 @@ public class AiKnowledgeServiceTests
         Assert.NotNull(deleted);
         Assert.True(deleted.IsDeleted);
     }
+
+    [Fact]
+    public async Task LargeDocument_ContextSelection_DistributesChunksAcrossDocument_StaysWithinBudget()
+    {
+        // Arrange: 50 chunks (total 20,000 characters > 6,000 character limit)
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "VeryLargeManual.pdf",
+            ContentType = "application/pdf",
+            FileSizeBytes = 1024 * 100,
+            Title = "Very Large Manual",
+            Status = DocumentStatus.Processed,
+            ExtractedText = "Large manual extracted text"
+        };
+        _context.Documents.Add(doc);
+
+        for (int i = 0; i < 50; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = i,
+                Text = $"[SECTION_{i:D2}] This is chunk {i} discussing topic {i} in detail. " + new string('x', 300),
+                StartPosition = i * 400,
+                EndPosition = (i + 1) * 400,
+                PageNumber = (i / 5) + 1
+            });
+        }
+        _context.SaveChanges();
+
+        var llm = new FakeLlmService { ResponseToReturn = "Summary of large manual across all chapters." };
+        var options = new AiKnowledgeOptions { MaxContextCharacters = 6000 };
+        var service = CreateService(llm, options);
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        var userMsg = llm.LastRequest!.Messages.Last().Content;
+
+        // Context must be bounded to at most MaxContextCharacters
+        Assert.True(userMsg.Length <= options.MaxContextCharacters + 1000); // Plus prompt wrapper overhead
+
+        // Representative chunks must be bounded (5 representatives, NOT all 50!)
+        Assert.Equal(5, result.Value.Sources.Count);
+
+        // Chunks must be distributed across the document: beginning, middle, and ending
+        Assert.Contains("[SECTION_00]", userMsg);
+        Assert.Contains("[SECTION_24]", userMsg);
+        Assert.Contains("[SECTION_49]", userMsg);
+
+        // Intermediate non-sampled chunks must NOT be present in user message
+        Assert.DoesNotContain("[SECTION_05]", userMsg);
+        Assert.DoesNotContain("[SECTION_15]", userMsg);
+        Assert.DoesNotContain("[SECTION_35]", userMsg);
+
+        // Verify provenance retained on all selected representative chunks
+        Assert.All(result.Value.Sources, s =>
+        {
+            Assert.Equal(doc.Id, s.DocumentId);
+            Assert.NotNull(s.DocumentChunkId);
+            Assert.NotNull(s.PageNumber);
+            Assert.Equal(doc.Title, s.Title);
+        });
+    }
+
+    [Fact]
+    public async Task LargeDocument_SelectionIsDeterministic()
+    {
+        // Arrange
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "DeterministicDoc.pdf",
+            ContentType = "application/pdf",
+            FileSizeBytes = 1024,
+            Title = "Deterministic Doc",
+            Status = DocumentStatus.Processed
+        };
+        _context.Documents.Add(doc);
+
+        for (int i = 0; i < 30; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = i,
+                Text = $"Chunk {i} text for deterministic check. " + new string('d', 300),
+                StartPosition = i * 350,
+                EndPosition = (i + 1) * 350
+            });
+        }
+        _context.SaveChanges();
+
+        var llm1 = new FakeLlmService { ResponseToReturn = "Run 1" };
+        var service1 = CreateService(llm1);
+        var llm2 = new FakeLlmService { ResponseToReturn = "Run 2" };
+        var service2 = CreateService(llm2);
+
+        // Act
+        var res1 = await service1.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+        var res2 = await service2.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert
+        Assert.True(res1.IsSuccess);
+        Assert.True(res2.IsSuccess);
+
+        var chunkIds1 = res1.Value.Sources.Select(s => s.DocumentChunkId).ToList();
+        var chunkIds2 = res2.Value.Sources.Select(s => s.DocumentChunkId).ToList();
+        Assert.Equal(chunkIds1, chunkIds2);
+
+        var content1 = llm1.LastRequest!.Messages.Last().Content;
+        var content2 = llm2.LastRequest!.Messages.Last().Content;
+        Assert.Equal(content1, content2);
+    }
+
+    [Fact]
+    public async Task SmallDocument_UsesCompleteContent_WhenWithinBudget()
+    {
+        // Arrange: 3 small chunks (total ~600 chars < 6,000 budget)
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "SmallBrochure.pdf",
+            ContentType = "application/pdf",
+            FileSizeBytes = 512,
+            Title = "Small Brochure",
+            Status = DocumentStatus.Processed
+        };
+        _context.Documents.Add(doc);
+
+        for (int i = 0; i < 3; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = i,
+                Text = $"Full chunk {i} description that easily fits. ",
+                StartPosition = i * 50,
+                EndPosition = (i + 1) * 50
+            });
+        }
+        _context.SaveChanges();
+
+        var llm = new FakeLlmService { ResponseToReturn = "Brochure summary." };
+        var service = CreateService(llm);
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        // All 3 chunks must be preserved
+        Assert.Equal(3, result.Value.Sources.Count);
+        var userMsg = llm.LastRequest!.Messages.Last().Content;
+        Assert.Contains("Full chunk 0 description", userMsg);
+        Assert.Contains("Full chunk 1 description", userMsg);
+        Assert.Contains("Full chunk 2 description", userMsg);
+    }
+
+    [Fact]
+    public async Task Security_CrossWorkspace_Page_Denied()
+    {
+        // Arrange: Page belongs to Workspace B
+        var pageB = new Page
+        {
+            WorkspaceId = _workspaceB.Id,
+            Title = "Confidential Page in Workspace B",
+            ContentJson = "Confidential content"
+        };
+        _context.Pages.Add(pageB);
+        _context.SaveChanges();
+
+        var service = CreateService(new FakeLlmService());
+
+        // Act: User in Workspace A requests operation on Page in Workspace B
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Page", pageB.Id));
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Knowledge.SourceNotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Security_CrossWorkspace_Note_Denied()
+    {
+        // Arrange: Note belongs to Workspace B
+        var noteB = new Note
+        {
+            WorkspaceId = _workspaceB.Id,
+            Title = "Secret Note in Workspace B",
+            Content = "Secret details"
+        };
+        _context.Notes.Add(noteB);
+        _context.SaveChanges();
+
+        var service = CreateService(new FakeLlmService());
+
+        // Act: User in Workspace A requests operation on Note in Workspace B
+        var result = await service.ExplainAsync(_workspaceA.Id, new AiKnowledgeRequest("Note", noteB.Id));
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Knowledge.SourceNotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Security_SoftDeleted_Source_Denied()
+    {
+        // Arrange: soft-deleted document
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            FileName = "DeletedDoc.pdf",
+            Title = "Deleted Document",
+            IsDeleted = true
+        };
+        _context.Documents.Add(doc);
+        _context.SaveChanges();
+
+        var service = CreateService(new FakeLlmService());
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Document", doc.Id));
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Knowledge.SourceNotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Security_Unauthorized_UserNotInWorkspace_Denied()
+    {
+        // Arrange: Stranger user
+        var stranger = new User { Email = "stranger@nexus.ai", FullName = "Stranger" };
+        _context.Users.Add(stranger);
+        _context.SaveChanges();
+
+        _currentUserService.UserId = stranger.Id;
+        _currentUserService.Email = stranger.Email;
+
+        var note = new Note
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Alpha Note",
+            Content = "Content"
+        };
+        _context.Notes.Add(note);
+        _context.SaveChanges();
+
+        var service = CreateService(new FakeLlmService());
+
+        // Act
+        var result = await service.SummarizeAsync(_workspaceA.Id, new AiKnowledgeRequest("Note", note.Id));
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(Error.Unauthorized.Code, result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Security_SoftDeleted_Generation_CannotBeRetrievedOrDeleted()
+    {
+        // Arrange
+        var gen = new AiGeneration
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Operation = "Summarize",
+            Content = "Hidden content",
+            IsDeleted = true
+        };
+        _context.AiGenerations.Add(gen);
+        _context.SaveChanges();
+
+        var service = CreateService(new FakeLlmService());
+
+        // Act
+        var getRes = await service.GetGenerationAsync(_workspaceA.Id, gen.Id);
+        var delRes = await service.DeleteGenerationAsync(_workspaceA.Id, gen.Id);
+
+        // Assert
+        Assert.False(getRes.IsSuccess);
+        Assert.Equal("AiGeneration.NotFound", getRes.Error.Code);
+        Assert.False(delRes.IsSuccess);
+        Assert.Equal("AiGeneration.NotFound", delRes.Error.Code);
+    }
 }

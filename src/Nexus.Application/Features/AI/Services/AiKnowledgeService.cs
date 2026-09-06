@@ -82,77 +82,16 @@ public class AiKnowledgeService : IAiKnowledgeService
                     new Error("Knowledge.SourceNotFound", "Document not found or inaccessible in this workspace."));
             }
 
-            // Bounded candidate retrieval: fetch chunks ordered by position, stopping at character budget
-            var chunks = await _context.DocumentChunks
-                .AsNoTracking()
-                .Where(c => c.DocumentId == document.Id && c.WorkspaceId == workspaceId && !c.IsDeleted)
-                .OrderBy(c => c.StartPosition)
-                .Take(25)
-                .Select(c => new { c.Id, c.Text, c.PageNumber })
-                .ToListAsync(cancellationToken);
+            var docContextResult = await ResolveDocumentContextAsync(
+                workspaceId, document.Id, document.Title, document.ExtractedText, maxChars, cancellationToken);
 
-            var sb = new StringBuilder();
-            var sources = new List<ChatSourceDto>();
-
-            if (chunks.Count > 0)
+            if (!docContextResult.IsSuccess)
             {
-                foreach (var chunk in chunks)
-                {
-                    if (sb.Length + chunk.Text.Length > maxChars)
-                    {
-                        var remaining = maxChars - sb.Length;
-                        if (remaining > 50)
-                        {
-                            sb.Append(chunk.Text.AsSpan(0, remaining));
-                        }
-                        break;
-                    }
-
-                    sb.AppendLine(chunk.Text);
-                    sb.AppendLine();
-
-                    sources.Add(new ChatSourceDto(
-                        Id: Guid.NewGuid(),
-                        DocumentId: document.Id,
-                        DocumentChunkId: chunk.Id,
-                        PageId: null,
-                        NoteId: null,
-                        Title: document.Title,
-                        SourceType: "Document",
-                        RelevanceScore: 1.0,
-                        PageNumber: chunk.PageNumber,
-                        Snippet: chunk.Text.Length > 200 ? chunk.Text.Substring(0, 197) + "..." : chunk.Text));
-                }
-            }
-            else if (!string.IsNullOrWhiteSpace(document.ExtractedText))
-            {
-                var text = document.ExtractedText.Length > maxChars
-                    ? document.ExtractedText.Substring(0, maxChars)
-                    : document.ExtractedText;
-
-                sb.Append(text);
-
-                sources.Add(new ChatSourceDto(
-                    Id: Guid.NewGuid(),
-                    DocumentId: document.Id,
-                    DocumentChunkId: null,
-                    PageId: null,
-                    NoteId: null,
-                    Title: document.Title,
-                    SourceType: "Document",
-                    RelevanceScore: 1.0,
-                    PageNumber: 1,
-                    Snippet: text.Length > 200 ? text.Substring(0, 197) + "..." : text));
+                return Result.Failure<(string, string, IReadOnlyList<ChatSourceDto>, Guid?, Guid?, Guid?)>(docContextResult.Error);
             }
 
-            var content = sb.ToString().Trim();
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                return Result.Failure<(string, string, IReadOnlyList<ChatSourceDto>, Guid?, Guid?, Guid?)>(
-                    new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
-            }
-
-            return Result.Success((document.Title, content, (IReadOnlyList<ChatSourceDto>)sources, (Guid?)document.Id, (Guid?)null, (Guid?)null));
+            var (content, sources) = docContextResult.Value;
+            return Result.Success((document.Title, content, sources, (Guid?)document.Id, (Guid?)null, (Guid?)null));
         }
 
         if (sourceType.Equals("Page", StringComparison.OrdinalIgnoreCase))
@@ -231,6 +170,241 @@ public class AiKnowledgeService : IAiKnowledgeService
 
         return Result.Failure<(string, string, IReadOnlyList<ChatSourceDto>, Guid?, Guid?, Guid?)>(
             new Error("Knowledge.InvalidSourceType", $"Invalid source type '{sourceType}'. Supported: Document, Page, Note."));
+    }
+
+    private sealed record ChunkSummary(Guid Id, int ChunkIndex, string Text, int? PageNumber);
+
+    private async Task<Result<(string Content, IReadOnlyList<ChatSourceDto> Sources)>> ResolveDocumentContextAsync(
+        Guid workspaceId,
+        Guid documentId,
+        string documentTitle,
+        string? extractedText,
+        int maxChars,
+        CancellationToken cancellationToken)
+    {
+        // 1. Fast count query: determine chunk presence without materializing the chunk table into memory
+        var totalChunks = await _context.DocumentChunks
+            .AsNoTracking()
+            .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        var sb = new StringBuilder();
+        var sources = new List<ChatSourceDto>();
+
+        if (totalChunks == 0)
+        {
+            // Fallback to ExtractedText if unchunked
+            if (string.IsNullOrWhiteSpace(extractedText))
+            {
+                return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
+                    new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
+            }
+
+            var rawText = extractedText.Trim();
+            if (rawText.Length <= maxChars)
+            {
+                // Small unchunked document: use complete text
+                sb.Append(rawText);
+            }
+            else
+            {
+                // Large unchunked document: select 5 representative distributed sections (beginning, early-middle, middle, late-middle, ending)
+                int k = 5;
+                int sectionLength = Math.Max(100, (maxChars - 100) / k);
+                for (int i = 0; i < k; i++)
+                {
+                    int start = (int)Math.Round((double)i * (rawText.Length - sectionLength) / (k - 1));
+                    start = Math.Clamp(start, 0, Math.Max(0, rawText.Length - sectionLength));
+                    int len = Math.Min(sectionLength, rawText.Length - start);
+
+                    if (sb.Length > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("[...]");
+                        sb.AppendLine();
+                    }
+                    sb.Append(rawText.Substring(start, len));
+                }
+            }
+
+            sources.Add(new ChatSourceDto(
+                Id: Guid.NewGuid(),
+                DocumentId: documentId,
+                DocumentChunkId: null,
+                PageId: null,
+                NoteId: null,
+                Title: documentTitle,
+                SourceType: "Document",
+                RelevanceScore: 1.0,
+                PageNumber: 1,
+                Snippet: rawText.Length > 200 ? rawText.Substring(0, 197) + "..." : rawText));
+
+            return Result.Success((sb.ToString().Trim(), (IReadOnlyList<ChatSourceDto>)sources));
+        }
+
+        // 2. Chunks exist: Distinguish between Small Document and Large Document
+        // A document is small if its chunk count is modest AND all its chunks fit within MaxContextCharacters.
+        int smallCandidateThreshold = Math.Max(5, maxChars / 400);
+
+        List<ChunkSummary>? candidateChunks = null;
+
+        if (totalChunks <= smallCandidateThreshold)
+        {
+            // Bounded fetch of all candidate chunks ordered by ChunkIndex
+            candidateChunks = await _context.DocumentChunks
+                .AsNoTracking()
+                .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
+                .OrderBy(c => c.ChunkIndex)
+                .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
+                .ToListAsync(cancellationToken);
+
+            int totalTextLength = candidateChunks.Sum(c => c.Text.Length);
+
+            if (totalTextLength <= maxChars)
+            {
+                // === SMALL DOCUMENT ===
+                // Complete document content fits within MaxContextCharacters:
+                // Use the complete relevant document content without truncation.
+                foreach (var chunk in candidateChunks)
+                {
+                    var text = chunk.Text.Trim();
+                    if (string.IsNullOrWhiteSpace(text)) continue;
+
+                    if (sb.Length > 0)
+                    {
+                        sb.AppendLine();
+                    }
+                    sb.AppendLine(text);
+
+                    sources.Add(new ChatSourceDto(
+                        Id: Guid.NewGuid(),
+                        DocumentId: documentId,
+                        DocumentChunkId: chunk.Id,
+                        PageId: null,
+                        NoteId: null,
+                        Title: documentTitle,
+                        SourceType: "Document",
+                        RelevanceScore: 1.0,
+                        PageNumber: chunk.PageNumber,
+                        Snippet: text.Length > 200 ? text.Substring(0, 197) + "..." : text));
+                }
+
+                var smallContent = sb.ToString().Trim();
+                if (string.IsNullOrWhiteSpace(smallContent))
+                {
+                    return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
+                        new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
+                }
+
+                return Result.Success((smallContent, (IReadOnlyList<ChatSourceDto>)sources));
+            }
+        }
+
+        // === LARGE DOCUMENT ===
+        // The document exceeds MaxContextCharacters or has more chunks than the small threshold.
+        // Retrieve chunks in a strictly bounded way:
+        // Do NOT load every chunk into memory.
+        // Do NOT call ToListAsync() on the complete chunk table.
+        // Deterministically select 5 representative chunks distributed across the document:
+        // Beginning (0%), Early-Middle (25%), Middle (50%), Late-Middle (75%), Ending (100%).
+        int kRepresentatives = Math.Min(5, totalChunks);
+        var targetIndices = new SortedSet<int>();
+        for (int i = 0; i < kRepresentatives; i++)
+        {
+            int index = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
+            targetIndices.Add(index);
+        }
+
+        List<ChunkSummary> representativeChunks;
+
+        if (candidateChunks != null)
+        {
+            // Already in memory from small candidate query
+            representativeChunks = candidateChunks
+                .Where(c => targetIndices.Contains(c.ChunkIndex))
+                .OrderBy(c => c.ChunkIndex)
+                .ToList();
+        }
+        else
+        {
+            var indexList = targetIndices.ToList();
+
+            // Database-friendly indexed lookup of ONLY the representative chunks
+            representativeChunks = await _context.DocumentChunks
+                .AsNoTracking()
+                .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted && indexList.Contains(c.ChunkIndex))
+                .OrderBy(c => c.ChunkIndex)
+                .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
+                .ToListAsync(cancellationToken);
+
+            // Fallback for non-contiguous/legacy indexes if exact ChunkIndex match missed
+            if (representativeChunks.Count == 0)
+            {
+                representativeChunks = await _context.DocumentChunks
+                    .AsNoTracking()
+                    .Where(c => c.DocumentId == documentId && c.WorkspaceId == workspaceId && !c.IsDeleted)
+                    .OrderBy(c => c.StartPosition)
+                    .Take(5)
+                    .Select(c => new ChunkSummary(c.Id, c.ChunkIndex, c.Text, c.PageNumber))
+                    .ToListAsync(cancellationToken);
+            }
+        }
+
+        if (representativeChunks.Count == 0)
+        {
+            return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
+                new Error("Knowledge.EmptySource", "The selected document contains no readable chunks."));
+        }
+
+        // Assemble context with proportional character budgeting:
+        // Guarantees that ALL sections (beginning, early-middle, middle, late-middle, ending)
+        // are represented without early chunks starving subsequent sections.
+        for (int i = 0; i < representativeChunks.Count; i++)
+        {
+            var chunk = representativeChunks[i];
+            var text = chunk.Text.Trim();
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            int remainingSlots = representativeChunks.Count - i;
+            int availableChars = maxChars - sb.Length;
+            if (availableChars <= 0) break;
+
+            int maxForThisChunk = Math.Min(text.Length, availableChars / remainingSlots);
+            if (maxForThisChunk <= 0) maxForThisChunk = availableChars;
+
+            string chunkText = text.Length > maxForThisChunk
+                ? text.Substring(0, Math.Max(0, maxForThisChunk - 3)) + "..."
+                : text;
+
+            if (sb.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+            }
+            sb.AppendLine(chunkText);
+
+            sources.Add(new ChatSourceDto(
+                Id: Guid.NewGuid(),
+                DocumentId: documentId,
+                DocumentChunkId: chunk.Id,
+                PageId: null,
+                NoteId: null,
+                Title: documentTitle,
+                SourceType: "Document",
+                RelevanceScore: 1.0,
+                PageNumber: chunk.PageNumber,
+                Snippet: text.Length > 200 ? text.Substring(0, 197) + "..." : text));
+        }
+
+        var content = sb.ToString().Trim();
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return Result.Failure<(string, IReadOnlyList<ChatSourceDto>)>(
+                new Error("Knowledge.EmptySource", "The selected document contains no readable text."));
+        }
+
+        return Result.Success((content, (IReadOnlyList<ChatSourceDto>)sources));
     }
 
     private static string CleanPageContent(string? raw)
@@ -745,7 +919,7 @@ public class AiKnowledgeService : IAiKnowledgeService
         Guid? docId,
         Guid? pageId,
         Guid? noteId,
-        string model,
+        string? model,
         CancellationToken cancellationToken)
     {
         var generation = new AiGeneration
