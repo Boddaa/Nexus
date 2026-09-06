@@ -293,12 +293,14 @@ public class ConversationService : IConversationService
             .AsNoTracking()
             .Where(m => m.ConversationId == conversation.Id && m.Id != userMessage.Id && !m.IsDeleted)
             .OrderByDescending(m => m.CreatedAtUtc)
+            .ThenByDescending(m => m.Id)
             .Take(_ragOptions.MaxConversationMessages)
-            .Select(m => new { m.Role, m.Content, m.CreatedAtUtc })
+            .Select(m => new { m.Id, m.Role, m.Content, m.CreatedAtUtc })
             .ToListAsync(cancellationToken);
 
         var historyMessages = historyEntities
             .OrderBy(m => m.CreatedAtUtc)
+            .ThenBy(m => m.Id)
             .Select(m => new LLMChatMessage(m.Role == AiRole.User ? "user" : "assistant", m.Content))
             .ToList();
 

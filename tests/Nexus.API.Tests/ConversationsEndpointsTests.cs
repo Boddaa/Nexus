@@ -74,16 +74,46 @@ public class ConversationsEndpointsTests : IClassFixture<CustomWebApplicationFac
     }
 
     [Fact]
-    public async Task Conversation_Authorization_ForeignUser_Should_Return_Unauthorized_Or_NotFound()
+    public async Task Conversation_Authorization_UserA_OwnConversation_Allowed_Returns_200()
     {
-        var (clientA, _, workspaceA) = await CreateUserAndWorkspaceAsync("user_a");
-        var (clientB, _, _) = await CreateUserAndWorkspaceAsync("user_b");
+        var (clientA, _, workspaceA) = await CreateUserAndWorkspaceAsync("user_a_own");
+        var createRes = await clientA.PostAsJsonAsync($"/api/workspaces/{workspaceA.Id}/conversations", new CreateConversationRequest("Alice Workspace Chat"));
+        Assert.Equal(HttpStatusCode.OK, createRes.StatusCode);
+        var convA = (await createRes.Content.ReadFromJsonAsync<ConversationDto>())!;
+
+        // User A views own conversation -> 200 OK
+        var response = await clientA.GetAsync($"/api/workspaces/{workspaceA.Id}/conversations/{convA.Id}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var fetched = await response.Content.ReadFromJsonAsync<ConversationDto>();
+        Assert.NotNull(fetched);
+        Assert.Equal(convA.Id, fetched.Id);
+        Assert.Equal("Alice Workspace Chat", fetched.Title);
+    }
+
+    [Fact]
+    public async Task Conversation_Authorization_UserB_UserAConversation_Denied_Returns_NotFoundOrUnauthorized()
+    {
+        var (clientA, _, workspaceA) = await CreateUserAndWorkspaceAsync("user_a_priv");
+        var (clientB, _, _) = await CreateUserAndWorkspaceAsync("user_b_priv");
 
         var createRes = await clientA.PostAsJsonAsync($"/api/workspaces/{workspaceA.Id}/conversations", new CreateConversationRequest("Private Chat"));
         var convA = (await createRes.Content.ReadFromJsonAsync<ConversationDto>())!;
 
-        // User B tries to view User A's conversation
+        // User B tries to view User A's conversation -> Denied (401 or 404)
         var response = await clientB.GetAsync($"/api/workspaces/{workspaceA.Id}/conversations/{convA.Id}");
         Assert.True(response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Conversation_Authorization_UserA_ConversationInAnotherWorkspace_Denied_Returns_NotFoundOrUnauthorized()
+    {
+        var (clientA, _, workspaceA) = await CreateUserAndWorkspaceAsync("user_a_ws1");
+        var createRes = await clientA.PostAsJsonAsync($"/api/workspaces/{workspaceA.Id}/conversations", new CreateConversationRequest("WsA Chat"));
+        var convA = (await createRes.Content.ReadFromJsonAsync<ConversationDto>())!;
+
+        // User A tries to view the conversation specifying a different workspace ID -> Denied (404 or 401)
+        var randomWorkspaceId = Guid.NewGuid();
+        var response = await clientA.GetAsync($"/api/workspaces/{randomWorkspaceId}/conversations/{convA.Id}");
+        Assert.True(response.StatusCode == HttpStatusCode.NotFound || response.StatusCode == HttpStatusCode.Unauthorized);
     }
 }

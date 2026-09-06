@@ -286,6 +286,9 @@ public class SearchService : ISearchService
             .ThenByDescending(c => c.CreatedAtUtc)
             .ToList();
 
+        double maxCandidateScore = candidates.Count > 0 ? candidates.Max(c => c.Score) : 100.0;
+        if (maxCandidateScore <= 0.0) maxCandidateScore = 1.0;
+
         var pagedSlice = sortedCandidates
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -350,7 +353,9 @@ public class SearchService : ISearchService
                 c.UpdatedAtUtc,
                 null,
                 "Keyword",
-                null));
+                null,
+                null,
+                Math.Clamp(c.Score / maxCandidateScore, 0.0, 1.0)));
         }
 
         return Result.Success(new PagedResult<SearchResultDto>(finalResults, page, pageSize, totalCount));
@@ -408,7 +413,9 @@ public class SearchService : ISearchService
             null,
             c.ChunkId,
             "Semantic",
-            c.SimilarityScore
+            c.SimilarityScore,
+            null,
+            Math.Clamp(c.SimilarityScore, 0.0, 1.0)
         )).ToList();
 
         var totalCount = semanticResults.Count;
@@ -495,7 +502,9 @@ public class SearchService : ISearchService
                 kw.UpdatedAtUtc,
                 null,
                 "Keyword",
-                null);
+                null,
+                null,
+                Math.Clamp(weightedScore / 100.0, 0.0, 1.0));
         }
 
         // Merge normalized semantic items
@@ -523,7 +532,8 @@ public class SearchService : ISearchService
                     sem.ChunkId,
                     "Hybrid",
                     sem.SimilarityScore,
-                    sem.PageNumber);
+                    sem.PageNumber,
+                    Math.Clamp(combinedScore / 100.0, 0.0, 1.0));
             }
             else
             {
@@ -540,7 +550,8 @@ public class SearchService : ISearchService
                     sem.ChunkId,
                     "Semantic",
                     sem.SimilarityScore,
-                    sem.PageNumber);
+                    sem.PageNumber,
+                    Math.Clamp(weightedSemScore / 100.0, 0.0, 1.0));
             }
         }
 

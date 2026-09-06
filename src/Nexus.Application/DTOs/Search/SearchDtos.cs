@@ -22,7 +22,8 @@ public record SearchResultDto(
     Guid? ChunkId = null,
     string? SearchMode = null,
     double? SimilarityScore = null,
-    int? PageNumber = null
+    int? PageNumber = null,
+    double? NormalizedScore = null
 );
 
 public record PagedResult<T>(

@@ -7,4 +7,5 @@ public record RagAnswerResult(
     IReadOnlyList<ChatSourceDto> Sources,
     int? PromptTokens = null,
     int? CompletionTokens = null,
-    int? TotalTokens = null);
+    int? TotalTokens = null,
+    IReadOnlyList<ChatSourceDto>? CitedSources = null);

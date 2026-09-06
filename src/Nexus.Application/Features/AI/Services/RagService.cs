@@ -17,6 +17,7 @@ public class RagService : IRagService
     private readonly ISearchService _searchService;
     private readonly IContextBuilder _contextBuilder;
     private readonly IPromptBuilder _promptBuilder;
+    private readonly ICitationValidator _citationValidator;
     private readonly ILLMService _llmService;
     private readonly RagOptions _ragOptions;
     private readonly LlmOptions _llmOptions;
@@ -26,6 +27,7 @@ public class RagService : IRagService
         ISearchService searchService,
         IContextBuilder contextBuilder,
         IPromptBuilder promptBuilder,
+        ICitationValidator citationValidator,
         ILLMService llmService,
         IOptions<RagOptions> ragOptions,
         IOptions<LlmOptions> llmOptions,
@@ -34,6 +36,7 @@ public class RagService : IRagService
         _searchService = searchService;
         _contextBuilder = contextBuilder;
         _promptBuilder = promptBuilder;
+        _citationValidator = citationValidator;
         _llmService = llmService;
         _ragOptions = ragOptions?.Value ?? new RagOptions();
         _llmOptions = llmOptions?.Value ?? new LlmOptions();
@@ -66,14 +69,19 @@ public class RagService : IRagService
             return Result.Failure<RagAnswerResult>(searchResult.Error);
         }
 
-        // 2. Filter & Map to ChatSourceDto
+        // 2. Filter & Map to ChatSourceDto using normalized relevance score
         var candidateItems = searchResult.Value.Items;
         var sources = new List<ChatSourceDto>();
 
         foreach (var item in candidateItems)
         {
-            // Apply minimum relevance filter
-            if (item.Score < _ragOptions.MinimumRelevanceScore)
+            // Deterministic normalized relevance score in [0.0, 1.0] from SearchResultDto
+            var normalizedScore = item.NormalizedScore ?? (item.SimilarityScore.HasValue
+                ? Math.Clamp(item.SimilarityScore.Value, 0.0, 1.0)
+                : Math.Clamp(item.Score / 100.0, 0.0, 1.0));
+
+            // Apply minimum relevance filter on the normalized [0.0, 1.0] scale
+            if (normalizedScore < _ragOptions.MinimumRelevanceScore)
             {
                 continue;
             }
@@ -86,7 +94,7 @@ public class RagService : IRagService
                 NoteId: item.Type.Equals("Note", StringComparison.OrdinalIgnoreCase) ? item.Id : null,
                 Title: item.Title,
                 SourceType: item.Type,
-                RelevanceScore: item.Score,
+                RelevanceScore: Math.Round(normalizedScore, 4),
                 PageNumber: item.PageNumber,
                 Snippet: item.Snippet));
 
@@ -137,12 +145,22 @@ public class RagService : IRagService
         try
         {
             var llmResponse = await _llmService.ChatAsync(llmRequest, cancellationToken);
+
+            // Validate and sanitize citations: detect fabricated references, strip invalid tags, preserve authoritative sources
+            var citationResult = _citationValidator.ValidateAndSanitize(llmResponse.Content, sources);
+
             return Result.Success(new RagAnswerResult(
-                Answer: llmResponse.Content,
+                Answer: citationResult.SanitizedText,
                 Sources: sources,
                 PromptTokens: llmResponse.PromptTokens,
                 CompletionTokens: llmResponse.CompletionTokens,
-                TotalTokens: llmResponse.TotalTokens));
+                TotalTokens: llmResponse.TotalTokens,
+                CitedSources: citationResult.CitedSources));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("RAG LLM execution was canceled for query: {Query}", question);
+            return Result.Failure<RagAnswerResult>(new Error("AI.Cancelled", "AI request was cancelled."));
         }
         catch (LlmConfigurationException ex)
         {
