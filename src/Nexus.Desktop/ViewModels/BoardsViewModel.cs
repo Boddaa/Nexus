@@ -292,19 +292,174 @@ public partial class BoardsViewModel : ViewModelBase
         }
     }
 
+    public IReadOnlyList<CanvasItemViewModel> SelectedItems => CanvasItems.Where(i => i.IsSelected).ToList();
+
+    [RelayCommand]
+    public void SelectAll()
+    {
+        foreach (var item in CanvasItems) item.IsSelected = true;
+        if (SelectedItem == null) SelectedItem = CanvasItems.FirstOrDefault();
+        OnPropertyChanged(nameof(SelectedItems));
+    }
+
+    [RelayCommand]
+    public void ClearSelection()
+    {
+        foreach (var item in CanvasItems) item.IsSelected = false;
+        SelectedItem = null;
+        OnPropertyChanged(nameof(SelectedItems));
+    }
+
+    public void ToggleItemSelection(CanvasItemViewModel item)
+    {
+        item.IsSelected = !item.IsSelected;
+        if (item.IsSelected && SelectedItem == null) SelectedItem = item;
+        else if (!item.IsSelected && SelectedItem == item) SelectedItem = CanvasItems.FirstOrDefault(i => i.IsSelected);
+        OnPropertyChanged(nameof(SelectedItems));
+    }
+
+    public void SetSingleSelection(CanvasItemViewModel item)
+    {
+        foreach (var itm in CanvasItems) itm.IsSelected = (itm.Id == item.Id);
+        SelectedItem = item;
+        OnPropertyChanged(nameof(SelectedItems));
+    }
+
     [RelayCommand]
     public async Task DeleteSelectedItemAsync()
     {
-        var ws = _userSession.SelectedWorkspace;
-        if (ws == null || SelectedBoard == null || SelectedItem == null) return;
+        await DeleteSelectedAsync();
+    }
 
-        var item = SelectedItem;
-        var res = await _apiClient.DeleteBoardItemAsync(ws.Id, SelectedBoard.Id, item.Id);
-        if (res.IsSuccess)
+    [RelayCommand]
+    public async Task DeleteSelectedAsync()
+    {
+        var ws = _userSession.SelectedWorkspace;
+        if (ws == null || SelectedBoard == null) return;
+
+        var selected = SelectedItems;
+        if (selected.Count == 0 && SelectedItem != null)
         {
-            CanvasItems.Remove(item);
-            SelectedItem = CanvasItems.LastOrDefault();
-            StatusMessage = "Item deleted.";
+            selected = new[] { SelectedItem };
+        }
+        if (selected.Count == 0) return;
+
+        int deletedCount = 0;
+        var deletedItems = new List<CanvasItemViewModel>();
+        foreach (var item in selected.ToList())
+        {
+            var res = await _apiClient.DeleteBoardItemAsync(ws.Id, SelectedBoard.Id, item.Id);
+            if (res.IsSuccess)
+            {
+                CanvasItems.Remove(item);
+                deletedItems.Add(item);
+                deletedCount++;
+            }
+        }
+
+        if (deletedItems.Count > 0)
+        {
+            UndoRedo.PushAlreadyExecuted(new DeleteCanvasItemAction<IReadOnlyList<CanvasItemViewModel>>(
+                deletedItems,
+                items => { foreach (var i in items) if (!CanvasItems.Contains(i)) CanvasItems.Add(i); },
+                items => { foreach (var i in items) CanvasItems.Remove(i); }
+            ));
+        }
+
+        SelectedItem = CanvasItems.LastOrDefault();
+        StatusMessage = $"Deleted {deletedCount} item(s).";
+    }
+
+    private static readonly List<ClipboardItemData> _clipboard = new();
+
+    [RelayCommand]
+    public void CopySelected()
+    {
+        var selected = SelectedItems;
+        if (selected.Count == 0 && SelectedItem != null)
+        {
+            selected = new[] { SelectedItem };
+        }
+        if (selected.Count == 0) return;
+
+        _clipboard.Clear();
+        foreach (var item in selected)
+        {
+            _clipboard.Add(new ClipboardItemData(
+                item.Type,
+                item.Title,
+                item.Description,
+                item.Content,
+                item.Width,
+                item.Height,
+                item.Rotation,
+                item.ColorHex,
+                item.LinkedEntityType,
+                item.LinkedEntityId
+            ));
+        }
+        StatusMessage = $"Copied {_clipboard.Count} item(s) to clipboard.";
+    }
+
+    [RelayCommand]
+    public async Task PasteAsync()
+    {
+        var ws = _userSession.SelectedWorkspace;
+        if (ws == null || SelectedBoard == null || _clipboard.Count == 0) return;
+
+        foreach (var itm in CanvasItems) itm.IsSelected = false;
+
+        var pastedVms = new List<CanvasItemViewModel>();
+
+        foreach (var clip in _clipboard)
+        {
+            var req = new CreateBoardItemRequest(
+                Type: clip.Type,
+                Title: $"{clip.Title} (Copy)",
+                Description: clip.Description,
+                Content: clip.Content,
+                X: 200 + (pastedVms.Count * 30),
+                Y: 150 + (pastedVms.Count * 30),
+                Width: clip.Width,
+                Height: clip.Height,
+                Rotation: clip.Rotation,
+                ColorHex: clip.ColorHex,
+                LinkedEntityType: clip.LinkedEntityType,
+                LinkedEntityId: clip.LinkedEntityId
+            );
+
+            var res = await _apiClient.CreateBoardItemAsync(ws.Id, SelectedBoard.Id, req);
+            if (res.IsSuccess)
+            {
+                var i = res.Value;
+                var vm = new CanvasItemViewModel
+                {
+                    Id = i.Id,
+                    BoardId = i.BoardId,
+                    Type = i.Type,
+                    Title = i.Title,
+                    Description = i.Description,
+                    Content = i.Content,
+                    X = i.X,
+                    Y = i.Y,
+                    Width = i.Width,
+                    Height = i.Height,
+                    Rotation = i.Rotation,
+                    ZIndex = i.ZIndex,
+                    ColorHex = i.ColorHex,
+                    LinkedEntityType = i.LinkedEntityType,
+                    LinkedEntityId = i.LinkedEntityId,
+                    IsSelected = true
+                };
+                CanvasItems.Add(vm);
+                pastedVms.Add(vm);
+            }
+        }
+
+        if (pastedVms.Count > 0)
+        {
+            SelectedItem = pastedVms.Last();
+            StatusMessage = $"Pasted {pastedVms.Count} item(s).";
         }
     }
 
@@ -384,6 +539,43 @@ public partial class BoardsViewModel : ViewModelBase
         QueueItemPersistence(itemId);
     }
 
+    public void MoveSelectedItems(double deltaX, double deltaY, bool recordUndo = true)
+    {
+        var selected = SelectedItems;
+        if (selected.Count == 0 && SelectedItem != null)
+        {
+            selected = new[] { SelectedItem };
+        }
+        if (selected.Count == 0) return;
+
+        var moveEntries = new List<(Action<double, double> SetPos, double OldX, double OldY, double NewX, double NewY)>();
+
+        foreach (var item in selected)
+        {
+            var oldX = item.X;
+            var oldY = item.Y;
+            var newX = Math.Max(0, Math.Round(item.X + deltaX, 1));
+            var newY = Math.Max(0, Math.Round(item.Y + deltaY, 1));
+
+            item.X = newX;
+            item.Y = newY;
+
+            moveEntries.Add(((x, y) =>
+            {
+                item.X = x;
+                item.Y = y;
+                QueueItemPersistence(item.Id);
+            }, oldX, oldY, newX, newY));
+
+            QueueItemPersistence(item.Id);
+        }
+
+        if (recordUndo && moveEntries.Count > 0)
+        {
+            UndoRedo.PushAlreadyExecuted(new BatchMoveCanvasAction(moveEntries));
+        }
+    }
+
     public void ResizeItem(Guid itemId, double newWidth, double newHeight, bool recordUndo = true)
     {
         var item = CanvasItems.FirstOrDefault(i => i.Id == itemId);
@@ -392,8 +584,8 @@ public partial class BoardsViewModel : ViewModelBase
         var oldW = item.Width;
         var oldH = item.Height;
 
-        item.Width = Math.Max(50, newWidth);
-        item.Height = Math.Max(40, newHeight);
+        item.Width = Math.Max(50, Math.Round(newWidth, 1));
+        item.Height = Math.Max(40, Math.Round(newHeight, 1));
 
         if (recordUndo)
         {
@@ -415,6 +607,8 @@ public partial class BoardsViewModel : ViewModelBase
         _debounceTimer.Start();
     }
 
+    private CancellationTokenSource? _persistCts;
+
     private async void OnDebounceTimerTick(object? sender, EventArgs e)
     {
         _debounceTimer.Stop();
@@ -433,11 +627,22 @@ public partial class BoardsViewModel : ViewModelBase
 
         if (updates.Count == 0) return;
 
-        var req = new BatchUpdateBoardItemsRequest(updates);
-        var res = await _apiClient.BatchUpdateBoardItemsAsync(ws.Id, SelectedBoard.Id, req);
-        if (!res.IsSuccess)
+        _persistCts?.Cancel();
+        _persistCts = new CancellationTokenSource();
+        var token = _persistCts.Token;
+
+        try
         {
-            StatusMessage = $"Sync failed: {res.Error.Description}";
+            var req = new BatchUpdateBoardItemsRequest(updates);
+            var res = await _apiClient.BatchUpdateBoardItemsAsync(ws.Id, SelectedBoard.Id, req, token);
+            if (!res.IsSuccess && !token.IsCancellationRequested)
+            {
+                StatusMessage = $"Sync failed: {res.Error.Description}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Newer request took precedence
         }
     }
 

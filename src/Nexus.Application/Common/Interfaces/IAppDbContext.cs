@@ -36,4 +36,5 @@ public interface IAppDbContext
     DbSet<AiGenerationSource> AiGenerationSources { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

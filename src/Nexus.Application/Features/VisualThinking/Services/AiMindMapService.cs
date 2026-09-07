@@ -299,12 +299,23 @@ public class AiMindMapService : IAiMindMapService
             });
         }
 
-        _context.MindMaps.Add(mindMap);
-        _context.MindMapNodes.AddRange(dbNodes);
-        _context.MindMapEdges.AddRange(dbEdges);
-        _context.AiGenerations.Add(aiGeneration);
+        await using var transaction = await _context.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _context.MindMaps.Add(mindMap);
+            _context.MindMapNodes.AddRange(dbNodes);
+            _context.MindMapEdges.AddRange(dbEdges);
+            _context.AiGenerations.Add(aiGeneration);
 
-        await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _logger.LogError(ex, "Transaction failed while persisting AI mind map for workspace {WorkspaceId}", workspaceId);
+            return Result.Failure<GeneratedMindMapDto>(new Error("AiMindMap.PersistenceFailed", "Failed to persist generated mind map. All changes were rolled back."));
+        }
 
         _logger.LogInformation("Successfully generated mind map {MindMapId} with {NodeCount} nodes and {EdgeCount} edges for workspace {WorkspaceId}",
             mindMap.Id, dbNodes.Count, dbEdges.Count, workspaceId);
@@ -498,10 +509,10 @@ public class AiMindMapService : IAiMindMapService
             }
         }
 
-        // Query Study Topics
+        // Query Study Topics (user personal study resource - strictly isolate by UserId)
         var topics = await _context.StudyTopics
             .AsNoTracking()
-            .Where(t => t.WorkspaceId == workspaceId && !t.IsDeleted)
+            .Where(t => t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted)
             .Take(50)
             .ToListAsync(cancellationToken);
 
@@ -512,6 +523,40 @@ public class AiMindMapService : IAiMindMapService
             if (matchCount > 0)
             {
                 relatedItems.Add(new RelatedKnowledgeItemDto(topic.Id, topic.Title, "StudyTopic", topic.Description ?? string.Empty, Math.Min(1.0, 0.5 + (matchCount * 0.2))));
+            }
+        }
+
+        // Query Quizzes (user personal study resource - strictly isolate by UserId)
+        var quizzes = await _context.Quizzes
+            .AsNoTracking()
+            .Where(q => q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        foreach (var quiz in quizzes)
+        {
+            var matchCount = keywords.Count(k => quiz.Title.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                                                 (quiz.Description != null && quiz.Description.Contains(k, StringComparison.OrdinalIgnoreCase)));
+            if (matchCount > 0)
+            {
+                relatedItems.Add(new RelatedKnowledgeItemDto(quiz.Id, quiz.Title, "Quiz", quiz.Description ?? string.Empty, Math.Min(1.0, 0.5 + (matchCount * 0.2))));
+            }
+        }
+
+        // Query Flashcards (user personal study resource - strictly isolate by UserId)
+        var flashcards = await _context.Flashcards
+            .AsNoTracking()
+            .Where(f => f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        foreach (var card in flashcards)
+        {
+            var matchCount = keywords.Count(k => card.FrontText.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                                                 card.BackText.Contains(k, StringComparison.OrdinalIgnoreCase));
+            if (matchCount > 0)
+            {
+                relatedItems.Add(new RelatedKnowledgeItemDto(card.Id, card.FrontText, "Flashcard", card.BackText, Math.Min(1.0, 0.5 + (matchCount * 0.2))));
             }
         }
 
@@ -541,8 +586,97 @@ public class AiMindMapService : IAiMindMapService
                 return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Source.NotFound", "Document not found."));
             }
 
-            string content = doc.Summary ?? doc.ExtractedText ?? string.Empty;
-            if (content.Length > maxChars) content = content[..maxChars];
+            var chunkQuery = _context.DocumentChunks
+                .AsNoTracking()
+                .Where(c => c.DocumentId == doc.Id && c.WorkspaceId == workspaceId && !c.IsDeleted);
+
+            var totalChunks = await chunkQuery.CountAsync(ct);
+            string content;
+
+            if (totalChunks == 0)
+            {
+                var rawText = doc.Summary ?? doc.ExtractedText ?? string.Empty;
+                if (rawText.Length <= maxChars)
+                {
+                    content = rawText;
+                }
+                else
+                {
+                    // Sample beginning, middle, and end so content across the entire document is preserved
+                    int partLength = (maxChars - 40) / 3;
+                    var start = rawText[..partLength];
+                    int midStart = (rawText.Length / 2) - (partLength / 2);
+                    var mid = rawText.Substring(midStart, partLength);
+                    var end = rawText[^partLength..];
+                    content = $"{start}\n\n[...]\n\n{mid}\n\n[...]\n\n{end}";
+                }
+            }
+            else
+            {
+                var totalTextLength = await chunkQuery.SumAsync(c => (int?)c.Text.Length, ct) ?? 0;
+                if (totalTextLength <= maxChars)
+                {
+                    var allChunks = await chunkQuery
+                        .OrderBy(c => c.StartPosition)
+                        .ThenBy(c => c.ChunkIndex)
+                        .Select(c => c.Text)
+                        .ToListAsync(ct);
+
+                    content = string.Join("\n\n", allChunks.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()));
+                }
+                else
+                {
+                    // Large document: select up to 5 representative chunks distributed across the document
+                    // Beginning (0%), Early-Middle (25%), Middle (50%), Late-Middle (75%), Ending (100%)
+                    int kRepresentatives = Math.Min(5, totalChunks);
+                    var offsets = new List<int>();
+                    for (int i = 0; i < kRepresentatives; i++)
+                    {
+                        int offset = (int)Math.Round((double)i * (totalChunks - 1) / (kRepresentatives - 1));
+                        offsets.Add(offset);
+                    }
+
+                    var uniqueOffsets = offsets.Distinct().OrderBy(x => x).ToList();
+                    var representativeTexts = new List<string>();
+
+                    foreach (var offset in uniqueOffsets)
+                    {
+                        var chunkText = await chunkQuery
+                            .OrderBy(c => c.StartPosition)
+                            .ThenBy(c => c.ChunkIndex)
+                            .Skip(offset)
+                            .Take(1)
+                            .Select(c => c.Text)
+                            .FirstOrDefaultAsync(ct);
+
+                        if (!string.IsNullOrWhiteSpace(chunkText))
+                        {
+                            representativeTexts.Add(chunkText.Trim());
+                        }
+                    }
+
+                    var sb = new StringBuilder();
+                    for (int i = 0; i < representativeTexts.Count; i++)
+                    {
+                        var text = representativeTexts[i];
+                        int remainingSlots = representativeTexts.Count - i;
+                        int availableChars = maxChars - sb.Length;
+                        if (availableChars <= 0) break;
+
+                        int maxForThisChunk = Math.Min(text.Length, availableChars / remainingSlots);
+                        if (maxForThisChunk <= 0) maxForThisChunk = availableChars;
+
+                        string snippet = text.Length > maxForThisChunk
+                            ? text.Substring(0, Math.Max(0, maxForThisChunk - 3)) + "..."
+                            : text;
+
+                        if (sb.Length > 0) sb.Append("\n\n---\n\n");
+                        sb.Append(snippet);
+                    }
+
+                    content = sb.ToString();
+                }
+            }
 
             return Result.Success((doc.Title, content, (Guid?)doc.Id, (Guid?)null, (Guid?)null, (Guid?)null));
         }
@@ -585,12 +719,17 @@ public class AiMindMapService : IAiMindMapService
             return Result.Success((note.Title, content, (Guid?)null, (Guid?)null, (Guid?)note.Id, (Guid?)null));
         }
 
-        if (sourceType.Equals("Topic", StringComparison.OrdinalIgnoreCase))
+        if (sourceType.Equals("Topic", StringComparison.OrdinalIgnoreCase) || sourceType.Equals("StudyTopic", StringComparison.OrdinalIgnoreCase))
         {
             var currentUserId = _currentUserService.UserId;
+            if (!currentUserId.HasValue)
+            {
+                return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Auth.Unauthorized", "User is not authenticated."));
+            }
+
             var topic = await _context.StudyTopics
                 .AsNoTracking()
-                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && (!currentUserId.HasValue || t.UserId == currentUserId.Value) && !t.IsDeleted)
+                .Where(t => t.Id == sourceId && t.WorkspaceId == workspaceId && t.UserId == currentUserId.Value && !t.IsDeleted)
                 .Select(t => new { t.Id, t.Title, t.Description })
                 .FirstOrDefaultAsync(ct);
 
@@ -603,8 +742,54 @@ public class AiMindMapService : IAiMindMapService
             return Result.Success((topic.Title, content, (Guid?)null, (Guid?)null, (Guid?)null, (Guid?)topic.Id));
         }
 
+        if (sourceType.Equals("Quiz", StringComparison.OrdinalIgnoreCase))
+        {
+            var currentUserId = _currentUserService.UserId;
+            if (!currentUserId.HasValue)
+            {
+                return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Auth.Unauthorized", "User is not authenticated."));
+            }
+
+            var quiz = await _context.Quizzes
+                .AsNoTracking()
+                .Where(q => q.Id == sourceId && q.WorkspaceId == workspaceId && q.UserId == currentUserId.Value && !q.IsDeleted)
+                .Select(q => new { q.Id, q.Title, q.Description })
+                .FirstOrDefaultAsync(ct);
+
+            if (quiz == null)
+            {
+                return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Source.NotFound", "Quiz not found."));
+            }
+
+            var content = $"{quiz.Title}\n{quiz.Description ?? string.Empty}".Trim();
+            return Result.Success((quiz.Title, content, (Guid?)null, (Guid?)null, (Guid?)null, (Guid?)quiz.Id));
+        }
+
+        if (sourceType.Equals("Flashcard", StringComparison.OrdinalIgnoreCase))
+        {
+            var currentUserId = _currentUserService.UserId;
+            if (!currentUserId.HasValue)
+            {
+                return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Auth.Unauthorized", "User is not authenticated."));
+            }
+
+            var card = await _context.Flashcards
+                .AsNoTracking()
+                .Where(f => f.Id == sourceId && f.WorkspaceId == workspaceId && f.UserId == currentUserId.Value && !f.IsDeleted)
+                .Select(f => new { f.Id, f.FrontText, f.BackText })
+                .FirstOrDefaultAsync(ct);
+
+            if (card == null)
+            {
+                return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(new Error("Source.NotFound", "Flashcard not found."));
+            }
+
+            var content = $"{card.FrontText}\n{card.BackText}".Trim();
+            return Result.Success((card.FrontText, content, (Guid?)null, (Guid?)null, (Guid?)null, (Guid?)card.Id));
+        }
+
         return Result.Failure<(string, string, Guid?, Guid?, Guid?, Guid?)>(
-            new Error("Source.InvalidType", $"Unsupported source type '{sourceType}'. Supported: Document, Page, Note, Topic."));
+            new Error("Source.InvalidType", $"Unsupported source type '{sourceType}'. Supported: Document, Page, Note, Topic, Quiz, Flashcard."));
     }
 
     private static Result<ParsedAiMindMap> ParseAndValidateAiOutput(string rawJson, int maxNodes)

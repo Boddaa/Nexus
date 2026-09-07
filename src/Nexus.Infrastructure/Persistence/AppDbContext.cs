@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Nexus.Application.Common.Interfaces;
 using Nexus.Domain.Common;
 using Nexus.Domain.Entities;
@@ -8,6 +9,7 @@ namespace Nexus.Infrastructure.Persistence;
 public class AppDbContext : DbContext, IAppDbContext
 {
     private readonly ICurrentUserService? _currentUserService;
+    private InMemoryDbContextTransaction? _currentInMemoryTransaction;
 
     public AppDbContext(
         DbContextOptions<AppDbContext> options,
@@ -64,6 +66,7 @@ public class AppDbContext : DbContext, IAppDbContext
             {
                 entry.Entity.CreatedAtUtc = now;
                 entry.Entity.CreatedBy = currentUserId ?? "System";
+                _currentInMemoryTransaction?.TrackAdded(entry.Entity);
             }
             else if (entry.State == EntityState.Modified)
             {
@@ -72,6 +75,160 @@ public class AppDbContext : DbContext, IAppDbContext
             }
         }
 
+        if (_currentInMemoryTransaction != null)
+        {
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State == EntityState.Added && !(entry.Entity is AuditableEntity))
+                {
+                    _currentInMemoryTransaction.TrackAdded(entry.Entity);
+                }
+            }
+        }
+
         return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    public virtual Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var tx = new InMemoryDbContextTransaction(this);
+            _currentInMemoryTransaction = tx;
+            return Task.FromResult<IDbContextTransaction>(tx);
+        }
+
+        return Database.BeginTransactionAsync(cancellationToken);
+    }
+
+    internal Task<int> BaseSaveChangesAsync(CancellationToken cancellationToken)
+    {
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    internal void ClearCurrentInMemoryTransaction(InMemoryDbContextTransaction tx)
+    {
+        if (_currentInMemoryTransaction == tx)
+        {
+            _currentInMemoryTransaction = null;
+        }
+    }
+}
+
+public class InMemoryDbContextTransaction : IDbContextTransaction
+{
+    private readonly AppDbContext _context;
+    private readonly List<object> _addedEntities = new();
+    private bool _isCommitted;
+    private bool _isRolledBack;
+
+    public InMemoryDbContextTransaction(AppDbContext context)
+    {
+        _context = context;
+        TransactionId = Guid.NewGuid();
+    }
+
+    public Guid TransactionId { get; }
+
+    public void TrackAdded(object entity)
+    {
+        if (!_isCommitted && !_isRolledBack)
+        {
+            _addedEntities.Add(entity);
+        }
+    }
+
+    public void Commit()
+    {
+        _isCommitted = true;
+        _addedEntities.Clear();
+        _context.ClearCurrentInMemoryTransaction(this);
+    }
+
+    public Task CommitAsync(CancellationToken cancellationToken = default)
+    {
+        Commit();
+        return Task.CompletedTask;
+    }
+
+    public void Rollback()
+    {
+        if (_isRolledBack || _isCommitted) return;
+        _isRolledBack = true;
+
+        _context.ChangeTracker.Clear();
+        if (_addedEntities.Count > 0)
+        {
+            foreach (var entity in _addedEntities)
+            {
+                try
+                {
+                    _context.Remove(entity);
+                }
+                catch
+                {
+                }
+            }
+            try
+            {
+                _context.BaseSaveChangesAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+            }
+            _context.ChangeTracker.Clear();
+            _addedEntities.Clear();
+        }
+        _context.ClearCurrentInMemoryTransaction(this);
+    }
+
+    public async Task RollbackAsync(CancellationToken cancellationToken = default)
+    {
+        if (_isRolledBack || _isCommitted) return;
+        _isRolledBack = true;
+
+        _context.ChangeTracker.Clear();
+        if (_addedEntities.Count > 0)
+        {
+            foreach (var entity in _addedEntities)
+            {
+                try
+                {
+                    _context.Remove(entity);
+                }
+                catch
+                {
+                }
+            }
+            try
+            {
+                await _context.BaseSaveChangesAsync(CancellationToken.None);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+            }
+            _context.ChangeTracker.Clear();
+            _addedEntities.Clear();
+        }
+        _context.ClearCurrentInMemoryTransaction(this);
+    }
+
+    public void Dispose()
+    {
+        if (!_isCommitted && !_isRolledBack)
+        {
+            Rollback();
+        }
+        _context.ClearCurrentInMemoryTransaction(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        if (!_isCommitted && !_isRolledBack)
+        {
+            Rollback();
+        }
+        _context.ClearCurrentInMemoryTransaction(this);
+        return ValueTask.CompletedTask;
     }
 }

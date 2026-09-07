@@ -73,6 +73,12 @@ public partial class BoardsView : UserControl
         }
     }
 
+    private bool _isResizingItem;
+    private CanvasItemViewModel? _resizingItem;
+    private Point _resizeStartPos;
+    private double _startWidth;
+    private double _startHeight;
+
     private void OnItemMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not BoardsViewModel vm) return;
@@ -80,13 +86,19 @@ public partial class BoardsView : UserControl
 
         if (sender is FrameworkElement element && element.DataContext is CanvasItemViewModel item)
         {
+            var isCtrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+            if (isCtrl)
+            {
+                vm.ToggleItemSelection(item);
+            }
+            else if (!item.IsSelected)
+            {
+                vm.SetSingleSelection(item);
+            }
+
             _isDraggingItem = true;
             _draggedItem = item;
             _itemDragStartPos = e.GetPosition(VisualCanvas);
-
-            foreach (var itm in vm.CanvasItems) itm.IsSelected = false;
-            item.IsSelected = true;
-            vm.SelectedItem = item;
 
             element.CaptureMouse();
             e.Handled = true;
@@ -97,17 +109,17 @@ public partial class BoardsView : UserControl
     {
         if (DataContext is not BoardsViewModel vm) return;
 
-        if (_isDraggingItem && _draggedItem != null && sender is FrameworkElement element)
+        if (_isDraggingItem && _draggedItem != null && sender is FrameworkElement)
         {
             var currentPos = e.GetPosition(VisualCanvas);
             var deltaX = currentPos.X - _itemDragStartPos.X;
             var deltaY = currentPos.Y - _itemDragStartPos.Y;
 
-            var newX = Math.Max(0, _draggedItem.X + deltaX);
-            var newY = Math.Max(0, _draggedItem.Y + deltaY);
-
-            vm.MoveItem(_draggedItem.Id, Math.Round(newX, 1), Math.Round(newY, 1));
-            _itemDragStartPos = currentPos;
+            if (Math.Abs(deltaX) > 0.01 || Math.Abs(deltaY) > 0.01)
+            {
+                vm.MoveSelectedItems(deltaX, deltaY);
+                _itemDragStartPos = currentPos;
+            }
             e.Handled = true;
         }
     }
@@ -118,6 +130,53 @@ public partial class BoardsView : UserControl
         {
             _isDraggingItem = false;
             _draggedItem = null;
+            element.ReleaseMouseCapture();
+            e.Handled = true;
+        }
+    }
+
+    private void OnResizeHandleMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not BoardsViewModel) return;
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        if (sender is FrameworkElement element && element.DataContext is CanvasItemViewModel item)
+        {
+            _isResizingItem = true;
+            _resizingItem = item;
+            _resizeStartPos = e.GetPosition(VisualCanvas);
+            _startWidth = item.Width;
+            _startHeight = item.Height;
+
+            element.CaptureMouse();
+            e.Handled = true;
+        }
+    }
+
+    private void OnResizeHandleMouseMove(object sender, MouseEventArgs e)
+    {
+        if (DataContext is not BoardsViewModel vm) return;
+
+        if (_isResizingItem && _resizingItem != null && sender is FrameworkElement)
+        {
+            var currentPos = e.GetPosition(VisualCanvas);
+            var deltaX = currentPos.X - _resizeStartPos.X;
+            var deltaY = currentPos.Y - _resizeStartPos.Y;
+
+            var newW = Math.Max(50, _startWidth + deltaX);
+            var newH = Math.Max(40, _startHeight + deltaY);
+
+            vm.ResizeItem(_resizingItem.Id, newW, newH);
+            e.Handled = true;
+        }
+    }
+
+    private void OnResizeHandleMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isResizingItem && sender is FrameworkElement element)
+        {
+            _isResizingItem = false;
+            _resizingItem = null;
             element.ReleaseMouseCapture();
             e.Handled = true;
         }

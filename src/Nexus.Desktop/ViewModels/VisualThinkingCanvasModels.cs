@@ -139,6 +139,130 @@ public class ResizeCanvasItemAction : IUndoableAction
     public void Redo() => _setSize(_newW, _newH);
 }
 
+public class BatchMoveCanvasAction : IUndoableAction
+{
+    private readonly List<(Action<double, double> SetPos, double OldX, double OldY, double NewX, double NewY)> _items;
+    public string Description => $"Move {_items.Count} Items";
+
+    public BatchMoveCanvasAction(List<(Action<double, double> SetPos, double OldX, double OldY, double NewX, double NewY)> items)
+    {
+        _items = items;
+    }
+
+    public void Undo()
+    {
+        foreach (var item in _items)
+        {
+            item.SetPos(item.OldX, item.OldY);
+        }
+    }
+
+    public void Redo()
+    {
+        foreach (var item in _items)
+        {
+            item.SetPos(item.NewX, item.NewY);
+        }
+    }
+}
+
+public class CreateCanvasItemAction<T> : IUndoableAction
+{
+    private readonly Action<T> _add;
+    private readonly Action<T> _remove;
+    private readonly T _item;
+    public string Description => "Create Item";
+
+    public CreateCanvasItemAction(T item, Action<T> add, Action<T> remove)
+    {
+        _item = item;
+        _add = add;
+        _remove = remove;
+    }
+
+    public void Undo() => _remove(_item);
+    public void Redo() => _add(_item);
+}
+
+public class DeleteCanvasItemAction<T> : IUndoableAction
+{
+    private readonly Action<T> _add;
+    private readonly Action<T> _remove;
+    private readonly T _item;
+    public string Description => "Delete Item";
+
+    public DeleteCanvasItemAction(T item, Action<T> add, Action<T> remove)
+    {
+        _item = item;
+        _add = add;
+        _remove = remove;
+    }
+
+    public void Undo() => _add(_item);
+    public void Redo() => _remove(_item);
+}
+
+public class ConnectMindMapEdgeAction : IUndoableAction
+{
+    private readonly CanvasEdgeViewModel _edge;
+    private readonly Action<CanvasEdgeViewModel> _add;
+    private readonly Action<CanvasEdgeViewModel> _remove;
+    public string Description => "Connect Nodes";
+
+    public ConnectMindMapEdgeAction(CanvasEdgeViewModel edge, Action<CanvasEdgeViewModel> add, Action<CanvasEdgeViewModel> remove)
+    {
+        _edge = edge;
+        _add = add;
+        _remove = remove;
+    }
+
+    public void Undo() => _remove(_edge);
+    public void Redo() => _add(_edge);
+}
+
+public class TextEditCanvasItemAction : IUndoableAction
+{
+    private readonly Action<string> _setText;
+    private readonly string _oldText;
+    private readonly string _newText;
+    public string Description => "Edit Text";
+
+    public TextEditCanvasItemAction(Action<string> setText, string oldText, string newText)
+    {
+        _setText = setText;
+        _oldText = oldText;
+        _newText = newText;
+    }
+
+    public void Undo() => _setText(_oldText);
+    public void Redo() => _setText(_newText);
+}
+
+public record ClipboardItemData(
+    BoardItemType Type,
+    string Title,
+    string? Description,
+    string? Content,
+    double Width,
+    double Height,
+    double Rotation,
+    string? ColorHex,
+    string? LinkedEntityType,
+    Guid? LinkedEntityId
+);
+
+public record ClipboardNodeData(
+    string Title,
+    string? Description,
+    double Width,
+    double Height,
+    string ColorHex,
+    string Shape,
+    MindMapNodeType NodeType,
+    string? LinkedEntityType,
+    Guid? LinkedEntityId
+);
+
 public partial class CanvasItemViewModel : ObservableObject
 {
     public Guid Id { get; init; }

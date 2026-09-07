@@ -39,7 +39,7 @@ public class MindMapsController : ApiControllerBase
     {
         if (request == null) return BadRequest("Request body is required.");
         var result = await _mindMapService.CreateMindMapAsync(workspaceId, request, ct);
-        return HandleCreatedResult(result, nameof(GetMindMapById), new { workspaceId, mindMapId = result.Value?.Id });
+        return HandleCreatedResult(result, nameof(GetMindMapById), v => new { workspaceId, mindMapId = v.Id });
     }
 
     [HttpPut("{mindMapId:guid}")]

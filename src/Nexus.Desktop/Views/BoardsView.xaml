@@ -8,6 +8,16 @@
              d:DesignHeight="700" d:DesignWidth="1000"
              d:DataContext="{d:DesignInstance Type=vm:BoardsViewModel}">
 
+    <UserControl.InputBindings>
+        <KeyBinding Gesture="Ctrl+A" Command="{Binding SelectAllCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding ClearSelectionCommand}" />
+        <KeyBinding Key="Delete" Command="{Binding DeleteSelectedCommand}" />
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+C" Command="{Binding CopySelectedCommand}" />
+        <KeyBinding Gesture="Ctrl+V" Command="{Binding PasteCommand}" />
+    </UserControl.InputBindings>
+
     <Grid Background="{StaticResource BgDarkestBrush}">
         <Grid.RowDefinitions>
             <!-- Top Action Header -->
@@ -120,7 +130,7 @@
                                                  Background="Transparent" BorderThickness="0"
                                                  AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
 
-                                        <!-- Footer: Knowledge Link Indicator -->
+                                         <!-- Footer: Knowledge Link Indicator -->
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0"
                                                     Visibility="{Binding HasKnowledgeLink, Converter={StaticResource BoolToVisConverter}}">
                                             <Button Style="{StaticResource ModernButtonSecondary}" Padding="6,2" FontSize="11"
@@ -129,6 +139,16 @@
                                                 <TextBlock Text="🔗 Open Knowledge" Foreground="{StaticResource AccentCyanBrush}" />
                                             </Button>
                                         </StackPanel>
+
+                                        <!-- Bottom-right Resize Handle -->
+                                        <Rectangle Grid.Row="2" Width="10" Height="10" Fill="{StaticResource AccentCyanBrush}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,-6,-6" RadiusX="2" RadiusY="2"
+                                                   Cursor="SizeNWSE"
+                                                   Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisConverter}}"
+                                                   MouseDown="OnResizeHandleMouseDown"
+                                                   MouseMove="OnResizeHandleMouseMove"
+                                                   MouseUp="OnResizeHandleMouseUp" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>

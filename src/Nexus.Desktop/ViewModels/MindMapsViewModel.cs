@@ -375,22 +375,191 @@ public partial class MindMapsViewModel : ViewModelBase
         }
     }
 
+    public IReadOnlyList<CanvasNodeViewModel> SelectedNodes => CanvasNodes.Where(n => n.IsSelected).ToList();
+
+    [RelayCommand]
+    public void SelectAll()
+    {
+        foreach (var n in CanvasNodes) n.IsSelected = true;
+        if (SelectedNode == null) SelectedNode = CanvasNodes.FirstOrDefault();
+        OnPropertyChanged(nameof(SelectedNodes));
+    }
+
+    [RelayCommand]
+    public void ClearSelection()
+    {
+        foreach (var n in CanvasNodes) n.IsSelected = false;
+        foreach (var edge in CanvasEdges) edge.IsSelected = false;
+        SelectedNode = null;
+        SelectedEdge = null;
+        ConnectingSourceNodeId = null;
+        OnPropertyChanged(nameof(SelectedNodes));
+    }
+
+    public void ToggleNodeSelection(CanvasNodeViewModel node)
+    {
+        node.IsSelected = !node.IsSelected;
+        if (node.IsSelected && SelectedNode == null) SelectedNode = node;
+        else if (!node.IsSelected && SelectedNode == node) SelectedNode = CanvasNodes.FirstOrDefault(n => n.IsSelected);
+        OnPropertyChanged(nameof(SelectedNodes));
+    }
+
+    public void SetSingleSelection(CanvasNodeViewModel node)
+    {
+        foreach (var n in CanvasNodes) n.IsSelected = (n.Id == node.Id);
+        foreach (var edge in CanvasEdges) edge.IsSelected = false;
+        SelectedNode = node;
+        SelectedEdge = null;
+        OnPropertyChanged(nameof(SelectedNodes));
+    }
+
     [RelayCommand]
     public async Task DeleteSelectedNodeAsync()
     {
+        await DeleteSelectedAsync();
+    }
+
+    [RelayCommand]
+    public async Task DeleteSelectedAsync()
+    {
         var ws = _userSession.SelectedWorkspace;
-        if (ws == null || SelectedMindMap == null || SelectedNode == null) return;
+        if (ws == null || SelectedMindMap == null) return;
 
-        var node = SelectedNode;
-        var res = await _apiClient.DeleteMindMapNodeAsync(ws.Id, SelectedMindMap.Id, node.Id);
-        if (res.IsSuccess)
+        var selected = SelectedNodes;
+        if (selected.Count == 0 && SelectedNode != null)
         {
-            CanvasNodes.Remove(node);
-            var edgesToRemove = CanvasEdges.Where(e => e.SourceNodeId == node.Id || e.TargetNodeId == node.Id).ToList();
-            foreach (var edge in edgesToRemove) CanvasEdges.Remove(edge);
+            selected = new[] { SelectedNode };
+        }
+        if (selected.Count == 0) return;
 
-            SelectedNode = CanvasNodes.LastOrDefault();
-            StatusMessage = "Concept node deleted.";
+        int deletedCount = 0;
+        var deletedNodes = new List<CanvasNodeViewModel>();
+        var deletedEdges = new List<CanvasEdgeViewModel>();
+        foreach (var node in selected.ToList())
+        {
+            var res = await _apiClient.DeleteMindMapNodeAsync(ws.Id, SelectedMindMap.Id, node.Id);
+            if (res.IsSuccess)
+            {
+                CanvasNodes.Remove(node);
+                deletedNodes.Add(node);
+                var edgesToRemove = CanvasEdges.Where(e => e.SourceNodeId == node.Id || e.TargetNodeId == node.Id).ToList();
+                foreach (var edge in edgesToRemove)
+                {
+                    CanvasEdges.Remove(edge);
+                    if (!deletedEdges.Contains(edge)) deletedEdges.Add(edge);
+                }
+                deletedCount++;
+            }
+        }
+
+        if (deletedNodes.Count > 0)
+        {
+            UndoRedo.PushAlreadyExecuted(new DeleteCanvasItemAction<(IReadOnlyList<CanvasNodeViewModel> nodes, IReadOnlyList<CanvasEdgeViewModel> edges)>(
+                (deletedNodes, deletedEdges),
+                tuple =>
+                {
+                    foreach (var n in tuple.nodes) if (!CanvasNodes.Contains(n)) CanvasNodes.Add(n);
+                    foreach (var e in tuple.edges) if (!CanvasEdges.Contains(e)) CanvasEdges.Add(e);
+                },
+                tuple =>
+                {
+                    foreach (var n in tuple.nodes) CanvasNodes.Remove(n);
+                    foreach (var e in tuple.edges) CanvasEdges.Remove(e);
+                }
+            ));
+        }
+
+        SelectedNode = CanvasNodes.LastOrDefault();
+        StatusMessage = $"Deleted {deletedCount} concept node(s).";
+    }
+
+    private static readonly List<ClipboardNodeData> _clipboard = new();
+
+    [RelayCommand]
+    public void CopySelected()
+    {
+        var selected = SelectedNodes;
+        if (selected.Count == 0 && SelectedNode != null)
+        {
+            selected = new[] { SelectedNode };
+        }
+        if (selected.Count == 0) return;
+
+        _clipboard.Clear();
+        foreach (var n in selected)
+        {
+            _clipboard.Add(new ClipboardNodeData(
+                n.Title,
+                n.Description,
+                n.Width,
+                n.Height,
+                n.ColorHex,
+                n.Shape,
+                n.NodeType,
+                n.LinkedEntityType,
+                n.LinkedEntityId
+            ));
+        }
+        StatusMessage = $"Copied {_clipboard.Count} concept node(s) to clipboard.";
+    }
+
+    [RelayCommand]
+    public async Task PasteAsync()
+    {
+        var ws = _userSession.SelectedWorkspace;
+        if (ws == null || SelectedMindMap == null || _clipboard.Count == 0) return;
+
+        foreach (var n in CanvasNodes) n.IsSelected = false;
+
+        var pastedVms = new List<CanvasNodeViewModel>();
+
+        foreach (var clip in _clipboard)
+        {
+            var req = new CreateMindMapNodeRequest(
+                Title: $"{clip.Title} (Copy)",
+                Description: clip.Description,
+                X: 400 + (pastedVms.Count * 30),
+                Y: 200 + (pastedVms.Count * 30),
+                Width: clip.Width,
+                Height: clip.Height,
+                ColorHex: clip.ColorHex,
+                Shape: clip.Shape,
+                NodeType: clip.NodeType,
+                LinkedEntityType: clip.LinkedEntityType,
+                LinkedEntityId: clip.LinkedEntityId
+            );
+
+            var res = await _apiClient.CreateMindMapNodeAsync(ws.Id, SelectedMindMap.Id, req);
+            if (res.IsSuccess)
+            {
+                var n = res.Value;
+                var vm = new CanvasNodeViewModel
+                {
+                    Id = n.Id,
+                    MindMapId = n.MindMapId,
+                    ParentNodeId = n.ParentNodeId,
+                    Title = n.Title,
+                    Description = n.Description,
+                    X = n.X,
+                    Y = n.Y,
+                    Width = n.Width,
+                    Height = n.Height,
+                    ColorHex = n.ColorHex,
+                    Shape = n.Shape,
+                    NodeType = n.NodeType,
+                    LinkedEntityType = n.LinkedEntityType,
+                    LinkedEntityId = n.LinkedEntityId,
+                    IsSelected = true
+                };
+                CanvasNodes.Add(vm);
+                pastedVms.Add(vm);
+            }
+        }
+
+        if (pastedVms.Count > 0)
+        {
+            SelectedNode = pastedVms.Last();
+            StatusMessage = $"Pasted {pastedVms.Count} concept node(s).";
         }
     }
 
@@ -398,7 +567,18 @@ public partial class MindMapsViewModel : ViewModelBase
     {
         var ws = _userSession.SelectedWorkspace;
         if (ws == null || SelectedMindMap == null) return;
-        if (sourceId == targetId) return;
+        if (sourceId == targetId)
+        {
+            StatusMessage = "Cannot connect a node to itself.";
+            return;
+        }
+
+        // Avoid duplicate edge in UI
+        if (CanvasEdges.Any(e => e.SourceNodeId == sourceId && e.TargetNodeId == targetId))
+        {
+            StatusMessage = "A connection already exists between these nodes.";
+            return;
+        }
 
         var req = new CreateMindMapEdgeRequest(sourceId, targetId, label);
         var res = await _apiClient.CreateMindMapEdgeAsync(ws.Id, SelectedMindMap.Id, req);
@@ -409,7 +589,7 @@ public partial class MindMapsViewModel : ViewModelBase
             var tgt = CanvasNodes.FirstOrDefault(n => n.Id == targetId);
             if (src != null && tgt != null)
             {
-                CanvasEdges.Add(new CanvasEdgeViewModel
+                var edgeVm = new CanvasEdgeViewModel
                 {
                     Id = e.Id,
                     MindMapId = e.MindMapId,
@@ -423,9 +603,20 @@ public partial class MindMapsViewModel : ViewModelBase
                     RelationType = e.RelationType,
                     Style = e.Style,
                     EdgeType = e.EdgeType
-                });
+                };
+                CanvasEdges.Add(edgeVm);
+
+                UndoRedo.PushAlreadyExecuted(new ConnectMindMapEdgeAction(
+                    edgeVm,
+                    edge => CanvasEdges.Add(edge),
+                    edge => CanvasEdges.Remove(edge)
+                ));
             }
             StatusMessage = "Connected nodes.";
+        }
+        else
+        {
+            StatusMessage = $"Connection failed: {res.Error.Description}";
         }
     }
 
@@ -441,6 +632,92 @@ public partial class MindMapsViewModel : ViewModelBase
         node.Y = newY;
 
         // Update connected edges geometry immediately
+        UpdateConnectedEdgesGeometry(nodeId);
+
+        if (recordUndo)
+        {
+            UndoRedo.PushAlreadyExecuted(new MoveCanvasItemAction((x, y) =>
+            {
+                node.X = x;
+                node.Y = y;
+                UpdateConnectedEdgesGeometry(nodeId);
+                QueueNodePersistence(node.Id);
+            }, oldX, oldY, newX, newY));
+        }
+
+        QueueNodePersistence(nodeId);
+    }
+
+    public void MoveSelectedNodes(double deltaX, double deltaY, bool recordUndo = true)
+    {
+        var selected = SelectedNodes;
+        if (selected.Count == 0 && SelectedNode != null)
+        {
+            selected = new[] { SelectedNode };
+        }
+        if (selected.Count == 0) return;
+
+        var moveEntries = new List<(Action<double, double> SetPos, double OldX, double OldY, double NewX, double NewY)>();
+
+        foreach (var node in selected)
+        {
+            var oldX = node.X;
+            var oldY = node.Y;
+            var newX = Math.Max(0, Math.Round(node.X + deltaX, 1));
+            var newY = Math.Max(0, Math.Round(node.Y + deltaY, 1));
+
+            node.X = newX;
+            node.Y = newY;
+            UpdateConnectedEdgesGeometry(node.Id);
+
+            moveEntries.Add(((x, y) =>
+            {
+                node.X = x;
+                node.Y = y;
+                UpdateConnectedEdgesGeometry(node.Id);
+                QueueNodePersistence(node.Id);
+            }, oldX, oldY, newX, newY));
+
+            QueueNodePersistence(node.Id);
+        }
+
+        if (recordUndo && moveEntries.Count > 0)
+        {
+            UndoRedo.PushAlreadyExecuted(new BatchMoveCanvasAction(moveEntries));
+        }
+    }
+
+    public void ResizeNode(Guid nodeId, double newWidth, double newHeight, bool recordUndo = true)
+    {
+        var node = CanvasNodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node == null) return;
+
+        var oldW = node.Width;
+        var oldH = node.Height;
+
+        node.Width = Math.Max(80, Math.Round(newWidth, 1));
+        node.Height = Math.Max(40, Math.Round(newHeight, 1));
+        UpdateConnectedEdgesGeometry(nodeId);
+
+        if (recordUndo)
+        {
+            UndoRedo.PushAlreadyExecuted(new ResizeCanvasItemAction((w, h) =>
+            {
+                node.Width = w;
+                node.Height = h;
+                UpdateConnectedEdgesGeometry(node.Id);
+                QueueNodePersistence(node.Id);
+            }, oldW, oldH, node.Width, node.Height));
+        }
+
+        QueueNodePersistence(nodeId);
+    }
+
+    private void UpdateConnectedEdgesGeometry(Guid nodeId)
+    {
+        var node = CanvasNodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node == null) return;
+
         foreach (var edge in CanvasEdges)
         {
             if (edge.SourceNodeId == nodeId)
@@ -454,23 +731,6 @@ public partial class MindMapsViewModel : ViewModelBase
                 edge.TargetY = node.CenterY;
             }
         }
-
-        if (recordUndo)
-        {
-            UndoRedo.PushAlreadyExecuted(new MoveCanvasItemAction((x, y) =>
-            {
-                node.X = x;
-                node.Y = y;
-                foreach (var edge in CanvasEdges)
-                {
-                    if (edge.SourceNodeId == nodeId) { edge.SourceX = node.CenterX; edge.SourceY = node.CenterY; }
-                    else if (edge.TargetNodeId == nodeId) { edge.TargetX = node.CenterX; edge.TargetY = node.CenterY; }
-                }
-                QueueNodePersistence(node.Id);
-            }, oldX, oldY, newX, newY));
-        }
-
-        QueueNodePersistence(nodeId);
     }
 
     private void QueueNodePersistence(Guid nodeId)
@@ -479,6 +739,8 @@ public partial class MindMapsViewModel : ViewModelBase
         _debounceTimer.Stop();
         _debounceTimer.Start();
     }
+
+    private CancellationTokenSource? _persistCts;
 
     private async void OnDebounceTimerTick(object? sender, EventArgs e)
     {
@@ -498,11 +760,22 @@ public partial class MindMapsViewModel : ViewModelBase
 
         if (updates.Count == 0) return;
 
-        var req = new BatchUpdateMindMapNodesRequest(updates);
-        var res = await _apiClient.BatchUpdateMindMapNodesAsync(ws.Id, SelectedMindMap.Id, req);
-        if (!res.IsSuccess)
+        _persistCts?.Cancel();
+        _persistCts = new CancellationTokenSource();
+        var token = _persistCts.Token;
+
+        try
         {
-            StatusMessage = $"Node sync failed: {res.Error.Description}";
+            var req = new BatchUpdateMindMapNodesRequest(updates);
+            var res = await _apiClient.BatchUpdateMindMapNodesAsync(ws.Id, SelectedMindMap.Id, req, token);
+            if (!res.IsSuccess && !token.IsCancellationRequested)
+            {
+                StatusMessage = $"Node sync failed: {res.Error.Description}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Newer request took precedence
         }
     }
 

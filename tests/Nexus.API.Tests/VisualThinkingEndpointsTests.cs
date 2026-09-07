@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Nexus.Application.DTOs.Auth;
 using Nexus.Application.DTOs.VisualThinking;
 using Nexus.Application.DTOs.Workspaces;
+using Nexus.Domain.Entities;
 using Nexus.Domain.Enums;
+using Nexus.Infrastructure.Persistence;
 using Xunit;
 
 namespace Nexus.API.Tests;
@@ -216,6 +219,166 @@ public class VisualThinkingEndpointsTests : IClassFixture<CustomWebApplicationFa
         // User 2 attempts to fetch User 1's board using Workspace 2 ID
         var mismatchRes = await clientUser2.GetAsync($"/api/workspaces/{workspace2.Id}/boards/{board.Id}");
         Assert.Equal(HttpStatusCode.NotFound, mismatchRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task Personal_StudyResource_Isolation_In_Same_Workspace_Should_Prevent_Unauthorized_Access()
+    {
+        var (clientAlice, userAlice, workspaceAlice) = await CreateUserAndWorkspaceAsync("alice_iso");
+        var (clientBob, userBob, _) = await CreateUserAndWorkspaceAsync("bob_iso");
+
+        Guid aliceTopicId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            // Add Bob as an Editor in Alice's workspace
+            db.WorkspaceMembers.Add(new WorkspaceMember
+            {
+                WorkspaceId = workspaceAlice.Id,
+                UserId = userBob.UserId,
+                Role = WorkspaceRole.Editor
+            });
+
+            // Alice creates a personal study topic
+            var topic = new StudyTopic
+            {
+                WorkspaceId = workspaceAlice.Id,
+                UserId = userAlice.UserId,
+                Title = "Alice Secret Machine Learning",
+                Description = "Transformers and Attention mechanisms"
+            };
+            db.StudyTopics.Add(topic);
+            await db.SaveChangesAsync();
+            aliceTopicId = topic.Id;
+        }
+
+        // Alice creates a Mind Map and Node linked to her personal study topic
+        var createMapRes = await clientAlice.PostAsJsonAsync($"/api/workspaces/{workspaceAlice.Id}/mindmaps", new CreateMindMapRequest("AI Map", "Overview"));
+        createMapRes.EnsureSuccessStatusCode();
+        var map = (await createMapRes.Content.ReadFromJsonAsync<MindMapDto>())!;
+
+        var createNodeRes = await clientAlice.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceAlice.Id}/mindmaps/{map.Id}/nodes",
+            new CreateMindMapNodeRequest(
+                Title: "ML Node",
+                X: 100,
+                Y: 100,
+                LinkedEntityType: "StudyTopic",
+                LinkedEntityId: aliceTopicId));
+        createNodeRes.EnsureSuccessStatusCode();
+        var node = (await createNodeRes.Content.ReadFromJsonAsync<MindMapNodeDto>())!;
+
+        // 1. Bob (in same workspace) tries to read Alice's personal study topic context -> NotFound / Forbidden
+        var bobCtxRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/mindmaps/{map.Id}/nodes/{node.Id}/knowledge");
+        Assert.Equal(HttpStatusCode.NotFound, bobCtxRes.StatusCode);
+
+        // 2. Bob tries to create a new node linking to Alice's personal study topic -> NotFound / BadRequest
+        var bobCreateNodeRes = await clientBob.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceAlice.Id}/mindmaps/{map.Id}/nodes",
+            new CreateMindMapNodeRequest(
+                Title: "Bob Steal Link",
+                X: 200,
+                Y: 200,
+                LinkedEntityType: "StudyTopic",
+                LinkedEntityId: aliceTopicId));
+        Assert.True(
+            bobCreateNodeRes.StatusCode == HttpStatusCode.NotFound ||
+            bobCreateNodeRes.StatusCode == HttpStatusCode.BadRequest);
+
+        // 3. Alice accesses her own study topic context -> OK
+        var aliceCtxRes = await clientAlice.GetAsync($"/api/workspaces/{workspaceAlice.Id}/mindmaps/{map.Id}/nodes/{node.Id}/knowledge");
+        aliceCtxRes.EnsureSuccessStatusCode();
+        var ctxData = await aliceCtxRes.Content.ReadFromJsonAsync<NodeKnowledgeContextDto>();
+        Assert.NotNull(ctxData);
+        Assert.Equal("Alice Secret Machine Learning", ctxData.EntityTitle);
+    }
+
+    [Fact]
+    public async Task Cross_Workspace_Link_Creation_Should_Fail()
+    {
+        var (clientAlice, _, workspaceAlice) = await CreateUserAndWorkspaceAsync("alice_cross");
+        var (clientBob, _, workspaceBob) = await CreateUserAndWorkspaceAsync("bob_cross");
+
+        Guid alicePageId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var page = new Page
+            {
+                WorkspaceId = workspaceAlice.Id,
+                Title = "Alice Private Page",
+                ContentJson = "{}"
+            };
+            db.Pages.Add(page);
+            await db.SaveChangesAsync();
+            alicePageId = page.Id;
+        }
+
+        // Bob creates a Mind Map in Workspace Bob
+        var createMapRes = await clientBob.PostAsJsonAsync($"/api/workspaces/{workspaceBob.Id}/mindmaps", new CreateMindMapRequest("Bob Cross Map"));
+        createMapRes.EnsureSuccessStatusCode();
+        var bobMap = (await createMapRes.Content.ReadFromJsonAsync<MindMapDto>())!;
+
+        // Bob tries to link a node in Workspace Bob to Alice's Page in Workspace Alice -> fails
+        var crossNodeRes = await clientBob.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceBob.Id}/mindmaps/{bobMap.Id}/nodes",
+            new CreateMindMapNodeRequest(
+                Title: "Cross Linked Node",
+                X: 100,
+                Y: 100,
+                LinkedEntityType: "Page",
+                LinkedEntityId: alicePageId));
+        Assert.True(
+            crossNodeRes.StatusCode == HttpStatusCode.NotFound ||
+            crossNodeRes.StatusCode == HttpStatusCode.BadRequest);
+
+        // Bob creates a Board in Workspace Bob
+        var createBoardRes = await clientBob.PostAsJsonAsync($"/api/workspaces/{workspaceBob.Id}/boards", new CreateBoardRequest("Bob Cross Board", null, BoardType.Kanban));
+        createBoardRes.EnsureSuccessStatusCode();
+        var bobBoard = (await createBoardRes.Content.ReadFromJsonAsync<BoardDto>())!;
+
+        // Bob tries to link a board item in Workspace Bob to Alice's Page in Workspace Alice -> fails
+        var crossItemRes = await clientBob.PostAsJsonAsync(
+            $"/api/workspaces/{workspaceBob.Id}/boards/{bobBoard.Id}/items",
+            new CreateBoardItemRequest(
+                Type: BoardItemType.StickyNote,
+                Title: "Cross Linked Sticky",
+                X: 100,
+                Y: 100,
+                LinkedEntityType: "Page",
+                LinkedEntityId: alicePageId));
+        Assert.True(
+            crossItemRes.StatusCode == HttpStatusCode.NotFound ||
+            crossItemRes.StatusCode == HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Batch_Update_Unauthorized_Workspace_Should_Return_Forbidden_Or_NotFound()
+    {
+        var (clientAlice, _, workspaceAlice) = await CreateUserAndWorkspaceAsync("alice_batch");
+        var (clientBob, _, _) = await CreateUserAndWorkspaceAsync("bob_batch");
+
+        // Alice creates a Board and Item
+        var boardRes = await clientAlice.PostAsJsonAsync($"/api/workspaces/{workspaceAlice.Id}/boards", new CreateBoardRequest("Alice Board", null, BoardType.Kanban));
+        boardRes.EnsureSuccessStatusCode();
+        var board = (await boardRes.Content.ReadFromJsonAsync<BoardDto>())!;
+
+        var itemRes = await clientAlice.PostAsJsonAsync($"/api/workspaces/{workspaceAlice.Id}/boards/{board.Id}/items", new CreateBoardItemRequest(BoardItemType.StickyNote, "Alice Note", X: 10, Y: 10));
+        itemRes.EnsureSuccessStatusCode();
+        var item = (await itemRes.Content.ReadFromJsonAsync<BoardItemDto>())!;
+
+        // Bob attempts to batch update Alice's board items without workspace access
+        var batchReq = new BatchUpdateBoardItemsRequest(new List<BoardItemBatchPositionDto>
+        {
+            new(item.Id, 500, 500, 200, 200, 0, 1)
+        });
+
+        var bobUpdateRes = await clientBob.PatchAsJsonAsync($"/api/workspaces/{workspaceAlice.Id}/boards/{board.Id}/items/batch", batchReq);
+        Assert.True(
+            bobUpdateRes.StatusCode == HttpStatusCode.Unauthorized ||
+            bobUpdateRes.StatusCode == HttpStatusCode.Forbidden ||
+            bobUpdateRes.StatusCode == HttpStatusCode.NotFound);
     }
 
     #endregion

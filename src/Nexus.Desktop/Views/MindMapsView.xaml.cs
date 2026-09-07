@@ -75,6 +75,12 @@ public partial class MindMapsView : UserControl
         }
     }
 
+    private bool _isResizingNode;
+    private CanvasNodeViewModel? _resizingNode;
+    private Point _nodeResizeStartPos;
+    private double _nodeStartWidth;
+    private double _nodeStartHeight;
+
     private async void OnNodeMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not MindMapsViewModel vm) return;
@@ -100,13 +106,19 @@ public partial class MindMapsView : UserControl
                 return;
             }
 
+            var isCtrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+            if (isCtrl)
+            {
+                vm.ToggleNodeSelection(node);
+            }
+            else if (!node.IsSelected)
+            {
+                vm.SetSingleSelection(node);
+            }
+
             _isDraggingNode = true;
             _draggedNode = node;
             _nodeDragStartPos = e.GetPosition(VisualCanvas);
-
-            foreach (var n in vm.CanvasNodes) n.IsSelected = false;
-            node.IsSelected = true;
-            vm.SelectedNode = node;
 
             element.CaptureMouse();
             e.Handled = true;
@@ -117,17 +129,17 @@ public partial class MindMapsView : UserControl
     {
         if (DataContext is not MindMapsViewModel vm) return;
 
-        if (_isDraggingNode && _draggedNode != null && sender is FrameworkElement element)
+        if (_isDraggingNode && _draggedNode != null && sender is FrameworkElement)
         {
             var currentPos = e.GetPosition(VisualCanvas);
             var deltaX = currentPos.X - _nodeDragStartPos.X;
             var deltaY = currentPos.Y - _nodeDragStartPos.Y;
 
-            var newX = Math.Max(0, _draggedNode.X + deltaX);
-            var newY = Math.Max(0, _draggedNode.Y + deltaY);
-
-            vm.MoveNode(_draggedNode.Id, Math.Round(newX, 1), Math.Round(newY, 1));
-            _nodeDragStartPos = currentPos;
+            if (Math.Abs(deltaX) > 0.01 || Math.Abs(deltaY) > 0.01)
+            {
+                vm.MoveSelectedNodes(deltaX, deltaY);
+                _nodeDragStartPos = currentPos;
+            }
             e.Handled = true;
         }
     }
@@ -138,6 +150,53 @@ public partial class MindMapsView : UserControl
         {
             _isDraggingNode = false;
             _draggedNode = null;
+            element.ReleaseMouseCapture();
+            e.Handled = true;
+        }
+    }
+
+    private void OnNodeResizeMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not MindMapsViewModel) return;
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        if (sender is FrameworkElement element && element.DataContext is CanvasNodeViewModel node)
+        {
+            _isResizingNode = true;
+            _resizingNode = node;
+            _nodeResizeStartPos = e.GetPosition(VisualCanvas);
+            _nodeStartWidth = node.Width;
+            _nodeStartHeight = node.Height;
+
+            element.CaptureMouse();
+            e.Handled = true;
+        }
+    }
+
+    private void OnNodeResizeMouseMove(object sender, MouseEventArgs e)
+    {
+        if (DataContext is not MindMapsViewModel vm) return;
+
+        if (_isResizingNode && _resizingNode != null && sender is FrameworkElement)
+        {
+            var currentPos = e.GetPosition(VisualCanvas);
+            var deltaX = currentPos.X - _nodeResizeStartPos.X;
+            var deltaY = currentPos.Y - _nodeResizeStartPos.Y;
+
+            var newW = Math.Max(80, _nodeStartWidth + deltaX);
+            var newH = Math.Max(40, _nodeStartHeight + deltaY);
+
+            vm.ResizeNode(_resizingNode.Id, newW, newH);
+            e.Handled = true;
+        }
+    }
+
+    private void OnNodeResizeMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isResizingNode && sender is FrameworkElement element)
+        {
+            _isResizingNode = false;
+            _resizingNode = null;
             element.ReleaseMouseCapture();
             e.Handled = true;
         }

@@ -390,6 +390,15 @@ public class MindMapService : IMindMapService
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(request.LinkedEntityType) || request.LinkedEntityId.HasValue)
+        {
+            var linkRes = await ValidateKnowledgeLinkAsync(workspaceId, userId.Value, request.LinkedEntityType, request.LinkedEntityId, cancellationToken);
+            if (!linkRes.IsSuccess)
+            {
+                return Result.Failure<MindMapNodeDto>(linkRes.Error);
+            }
+        }
+
         var node = new MindMapNode(Guid.NewGuid())
         {
             MindMapId = mindMapId,
@@ -497,8 +506,19 @@ public class MindMapService : IMindMapService
         if (request.ColorHex != null) node.ColorHex = request.ColorHex;
         if (request.Shape != null) node.Shape = request.Shape;
         if (request.NodeType.HasValue) node.NodeType = request.NodeType.Value;
-        if (request.LinkedEntityType != null) node.LinkedEntityType = request.LinkedEntityType;
-        if (request.LinkedEntityId.HasValue) node.LinkedEntityId = request.LinkedEntityId.Value;
+
+        if (request.LinkedEntityType != null || request.LinkedEntityId.HasValue)
+        {
+            var typeToValidate = request.LinkedEntityType ?? node.LinkedEntityType;
+            var idToValidate = request.LinkedEntityId ?? node.LinkedEntityId;
+            var linkRes = await ValidateKnowledgeLinkAsync(workspaceId, userId.Value, typeToValidate, idToValidate, cancellationToken);
+            if (!linkRes.IsSuccess)
+            {
+                return Result.Failure<MindMapNodeDto>(linkRes.Error);
+            }
+            if (request.LinkedEntityType != null) node.LinkedEntityType = request.LinkedEntityType;
+            if (request.LinkedEntityId.HasValue) node.LinkedEntityId = request.LinkedEntityId.Value;
+        }
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -1071,11 +1091,11 @@ public class MindMapService : IMindMapService
             case "studytopic":
                 var topic = await _context.StudyTopics
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(t => t.Id == entityId && t.WorkspaceId == workspaceId && !t.IsDeleted, cancellationToken);
+                    .FirstOrDefaultAsync(t => t.Id == entityId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
 
                 if (topic == null)
                 {
-                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Study Topic not found in this workspace."));
+                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Study Topic not found in this workspace or access denied."));
                 }
                 entityTitle = topic.Title;
                 snippet = topic.Description;
@@ -1085,11 +1105,11 @@ public class MindMapService : IMindMapService
             case "quiz":
                 var quiz = await _context.Quizzes
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(q => q.Id == entityId && q.WorkspaceId == workspaceId && !q.IsDeleted, cancellationToken);
+                    .FirstOrDefaultAsync(q => q.Id == entityId && q.WorkspaceId == workspaceId && q.UserId == userId.Value && !q.IsDeleted, cancellationToken);
 
                 if (quiz == null)
                 {
-                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Quiz not found in this workspace."));
+                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Quiz not found in this workspace or access denied."));
                 }
                 entityTitle = quiz.Title;
                 snippet = quiz.Description;
@@ -1099,11 +1119,11 @@ public class MindMapService : IMindMapService
             case "flashcard":
                 var card = await _context.Flashcards
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(f => f.Id == entityId && f.WorkspaceId == workspaceId && !f.IsDeleted, cancellationToken);
+                    .FirstOrDefaultAsync(f => f.Id == entityId && f.WorkspaceId == workspaceId && f.UserId == userId.Value && !f.IsDeleted, cancellationToken);
 
                 if (card == null)
                 {
-                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Flashcard not found in this workspace."));
+                    return Result.Failure<NodeKnowledgeContextDto>(new Error("KnowledgeLink.NotFound", "Linked Flashcard not found in this workspace or access denied."));
                 }
                 entityTitle = card.FrontText;
                 snippet = card.BackText;
@@ -1126,5 +1146,55 @@ public class MindMapService : IMindMapService
         );
 
         return Result.Success(contextDto);
+    }
+
+    private async Task<Result> ValidateKnowledgeLinkAsync(Guid workspaceId, Guid userId, string? entityType, Guid? entityId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(entityType) && !entityId.HasValue)
+        {
+            return Result.Success();
+        }
+
+        if (string.IsNullOrWhiteSpace(entityType) || !entityId.HasValue)
+        {
+            return Result.Failure(new Error("KnowledgeLink.Invalid", "Both entity type and entity ID must be specified for a knowledge link."));
+        }
+
+        var normalizedType = entityType.Trim().ToLowerInvariant();
+        bool exists;
+
+        switch (normalizedType)
+        {
+            case "page":
+                exists = await _context.Pages.AsNoTracking().AnyAsync(p => p.Id == entityId.Value && p.WorkspaceId == workspaceId && !p.IsDeleted, ct);
+                break;
+            case "note":
+                exists = await _context.Notes.AsNoTracking().AnyAsync(n => n.Id == entityId.Value && n.WorkspaceId == workspaceId && !n.IsDeleted, ct);
+                break;
+            case "document":
+                exists = await _context.Documents.AsNoTracking().AnyAsync(d => d.Id == entityId.Value && d.WorkspaceId == workspaceId && !d.IsDeleted, ct);
+                break;
+            case "documentchunk":
+                exists = await _context.DocumentChunks.AsNoTracking().Include(c => c.Document).AnyAsync(c => c.Id == entityId.Value && c.Document.WorkspaceId == workspaceId && !c.Document.IsDeleted, ct);
+                break;
+            case "studytopic":
+                exists = await _context.StudyTopics.AsNoTracking().AnyAsync(t => t.Id == entityId.Value && t.WorkspaceId == workspaceId && t.UserId == userId && !t.IsDeleted, ct);
+                break;
+            case "quiz":
+                exists = await _context.Quizzes.AsNoTracking().AnyAsync(q => q.Id == entityId.Value && q.WorkspaceId == workspaceId && q.UserId == userId && !q.IsDeleted, ct);
+                break;
+            case "flashcard":
+                exists = await _context.Flashcards.AsNoTracking().AnyAsync(f => f.Id == entityId.Value && f.WorkspaceId == workspaceId && f.UserId == userId && !f.IsDeleted, ct);
+                break;
+            default:
+                return Result.Failure(new Error("KnowledgeLink.Unsupported", $"Entity type '{entityType}' is not supported for knowledge links."));
+        }
+
+        if (!exists)
+        {
+            return Result.Failure(new Error("KnowledgeLink.NotFound", $"Linked {entityType} not found in this workspace or access denied."));
+        }
+
+        return Result.Success();
     }
 }

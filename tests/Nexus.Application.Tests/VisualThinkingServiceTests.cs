@@ -49,6 +49,24 @@ public class VisualThinkingServiceTests
         }
     }
 
+    private class FailingAppDbContext : AppDbContext
+    {
+        public bool ShouldFailSave { get; set; }
+
+        public FailingAppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService currentUserService)
+            : base(options, currentUserService) { }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (ShouldFailSave)
+            {
+                await base.SaveChangesAsync(cancellationToken);
+                throw new DbUpdateException("Simulated database failure during persistence");
+            }
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     public VisualThinkingServiceTests()
     {
         var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
@@ -462,6 +480,20 @@ public class VisualThinkingServiceTests
             Assert.Equal(r1.X, r2.X);
             Assert.Equal(r1.Y, r2.Y);
         }
+
+        // Run 4: Tree
+        var run1Tree = await _autoLayoutService.ApplyLayoutAsync(nodes, edges, new ApplyLayoutRequest(AutoLayoutAlgorithm.Tree));
+        var run2Tree = await _autoLayoutService.ApplyLayoutAsync(nodes, edges, new ApplyLayoutRequest(AutoLayoutAlgorithm.Tree));
+
+        Assert.True(run1Tree.IsSuccess);
+        Assert.True(run2Tree.IsSuccess);
+        Assert.Equal(run1Tree.Value.Positions.Count, run2Tree.Value.Positions.Count);
+        foreach (var r1 in run1Tree.Value.Positions)
+        {
+            var r2 = run2Tree.Value.Positions.First(x => x.NodeId == r1.NodeId);
+            Assert.Equal(r1.X, r2.X);
+            Assert.Equal(r1.Y, r2.Y);
+        }
     }
 
     #endregion
@@ -607,6 +639,527 @@ Instead of updating a row in place, every state change is an immutable event obj
         Assert.True(relRes.IsSuccess);
         Assert.NotEmpty(relRes.Value.RelatedItems);
         Assert.Contains(relRes.Value.RelatedItems, i => i.Title.Contains("Kubernetes"));
+    }
+
+    [Fact]
+    public async Task GenerateMindMap_PersistsAllEntitiesAtomically_OnSuccess()
+    {
+        var aiResponse = @"
+{
+  ""title"": ""System Components"",
+  ""description"": ""Overview of core services"",
+  ""nodes"": [
+    { ""temporaryId"": ""root"", ""title"": ""System Components"", ""nodeType"": ""Concept"", ""colorHex"": ""#8B5CF6"" },
+    { ""temporaryId"": ""c1"", ""title"": ""Auth"", ""nodeType"": ""Concept"", ""colorHex"": ""#3B82F6"" }
+  ],
+  ""edges"": [
+    { ""source"": ""root"", ""target"": ""c1"", ""label"": ""secures"" }
+  ]
+}";
+        _fakeLlmService.ResponseToReturn = aiResponse;
+
+        var page = new Page
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Source Doc For Provenance",
+            ContentJson = "{}"
+        };
+        _context.Pages.Add(page);
+        await _context.SaveChangesAsync();
+
+        var genRes = await _aiMindMapService.GenerateMindMapAsync(
+            _workspaceA.Id,
+            new GenerateMindMapRequest("Generate with source", SourceType: "Page", SourceId: page.Id));
+
+        Assert.True(genRes.IsSuccess);
+
+        // Verify MindMap exists
+        var mm = await _context.MindMaps.FirstOrDefaultAsync(m => m.Id == genRes.Value.MindMapId);
+        Assert.NotNull(mm);
+
+        // Verify Nodes exist
+        var nodes = await _context.MindMapNodes.Where(n => n.MindMapId == mm.Id).ToListAsync();
+        Assert.Equal(2, nodes.Count);
+
+        // Verify Edges exist
+        var edges = await _context.MindMapEdges.Where(e => e.MindMapId == mm.Id).ToListAsync();
+        Assert.Single(edges);
+
+        // Verify AiGeneration exists
+        var aiGen = await _context.AiGenerations
+            .Include(g => g.Sources)
+            .FirstOrDefaultAsync(g => g.WorkspaceId == _workspaceA.Id && g.SourcePageId == page.Id);
+        Assert.NotNull(aiGen);
+        Assert.Single(aiGen.Sources);
+        Assert.Equal(page.Id, aiGen.Sources.First().PageId);
+    }
+
+    [Fact]
+    public async Task GenerateMindMap_RollsBackAllEntities_WhenPersistenceFails()
+    {
+        var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: "RollbackTest_" + Guid.NewGuid().ToString())
+            .Options;
+
+        var testUser = new User { Email = "txuser@nexus.ai", FullName = "Tx User" };
+        var ws = new Workspace { Name = "Tx Workspace", OwnerId = testUser.Id };
+
+        var testUserService = new TestCurrentUserService { UserId = testUser.Id, Email = testUser.Email };
+        var failingContext = new FailingAppDbContext(dbOptions, testUserService);
+        failingContext.Users.Add(testUser);
+        failingContext.Workspaces.Add(ws);
+        await failingContext.SaveChangesAsync();
+
+        var failingMindMapService = new MindMapService(
+            failingContext,
+            testUserService,
+            _autoLayoutService,
+            Options.Create(_options),
+            NullLogger<MindMapService>.Instance);
+
+        var failingAiMindMapService = new AiMindMapService(
+            failingContext,
+            testUserService,
+            _fakeLlmService,
+            _autoLayoutService,
+            failingMindMapService,
+            Options.Create(_options),
+            NullLogger<AiMindMapService>.Instance);
+
+        var aiResponse = @"
+{
+  ""title"": ""Transactional Map"",
+  ""description"": ""Should be completely rolled back"",
+  ""nodes"": [
+    { ""temporaryId"": ""root"", ""title"": ""Root Node"", ""nodeType"": ""Concept"", ""colorHex"": ""#8B5CF6"" },
+    { ""temporaryId"": ""c1"", ""title"": ""Child Node"", ""nodeType"": ""Concept"", ""colorHex"": ""#3B82F6"" }
+  ],
+  ""edges"": [
+    { ""source"": ""root"", ""target"": ""c1"", ""label"": ""link"" }
+  ]
+}";
+        _fakeLlmService.ResponseToReturn = aiResponse;
+
+        // Enable failure on save
+        failingContext.ShouldFailSave = true;
+
+        var genRes = await failingAiMindMapService.GenerateMindMapAsync(ws.Id, new GenerateMindMapRequest("Should fail and rollback"));
+        Assert.False(genRes.IsSuccess);
+        Assert.Equal("AiMindMap.PersistenceFailed", genRes.Error.Code);
+
+        // Verify that rollback removed ALL entities - zero orphaned records!
+        Assert.Equal(0, await failingContext.MindMaps.CountAsync(m => m.WorkspaceId == ws.Id));
+        Assert.Equal(0, await failingContext.MindMapNodes.CountAsync());
+        Assert.Equal(0, await failingContext.MindMapEdges.CountAsync());
+        Assert.Equal(0, await failingContext.AiGenerations.CountAsync(g => g.WorkspaceId == ws.Id));
+        Assert.Equal(0, await failingContext.AiGenerationSources.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResolveSourceContent_SmallDocument_IncludesFullContent()
+    {
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Small Architecture Doc",
+            FileName = "arch.pdf"
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        var chunk1 = new DocumentChunk
+        {
+            DocumentId = doc.Id,
+            WorkspaceId = _workspaceA.Id,
+            ChunkIndex = 0,
+            StartPosition = 0,
+            EndPosition = 50,
+            Text = "Small doc intro explaining microservices pattern."
+        };
+        var chunk2 = new DocumentChunk
+        {
+            DocumentId = doc.Id,
+            WorkspaceId = _workspaceA.Id,
+            ChunkIndex = 1,
+            StartPosition = 51,
+            EndPosition = 100,
+            Text = "Small doc conclusion detailing event-driven communication."
+        };
+        _context.DocumentChunks.AddRange(chunk1, chunk2);
+        await _context.SaveChangesAsync();
+
+        _fakeLlmService.ResponseToReturn = @"{ ""title"": ""Arch"", ""nodes"": [ { ""temporaryId"": ""r"", ""title"": ""Root"" } ], ""edges"": [] }";
+
+        var res = await _aiMindMapService.GenerateMindMapAsync(_workspaceA.Id, new GenerateMindMapRequest("Prompt", SourceType: "Document", SourceId: doc.Id));
+        Assert.True(res.IsSuccess);
+
+        var prompt = _fakeLlmService.LastRequest?.Messages.FirstOrDefault()?.Content;
+        Assert.NotNull(prompt);
+        Assert.Contains("Small doc intro", prompt);
+        Assert.Contains("Small doc conclusion", prompt);
+    }
+
+    [Fact]
+    public async Task ResolveSourceContent_LargeDocument_SelectsDistributedRepresentativeChunks()
+    {
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Massive Comprehensive Guide",
+            FileName = "comprehensive.pdf"
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        // Create 20 large chunks (each ~1000 characters), total ~20,000 characters
+        var chunks = new List<DocumentChunk>();
+        for (int i = 0; i < 20; i++)
+        {
+            string marker = i switch
+            {
+                0 => "BEGINNING_SECTION_CHUNK_0",
+                5 => "EARLY_MIDDLE_CHUNK_5",
+                10 => "CORE_MIDDLE_CHUNK_10",
+                14 => "LATE_MIDDLE_CHUNK_14",
+                19 => "CRITICAL_END_CONCLUSION_CHUNK_19",
+                _ => $"REGULAR_CHUNK_{i}"
+            };
+
+            var text = marker + " " + new string('x', 900) + " " + marker;
+            chunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = i,
+                StartPosition = i * 1000,
+                EndPosition = (i + 1) * 1000,
+                Text = text
+            });
+        }
+        _context.DocumentChunks.AddRange(chunks);
+        await _context.SaveChangesAsync();
+
+        _fakeLlmService.ResponseToReturn = @"{ ""title"": ""Large Map"", ""nodes"": [ { ""temporaryId"": ""r"", ""title"": ""Root"" } ], ""edges"": [] }";
+
+        var res = await _aiMindMapService.GenerateMindMapAsync(_workspaceA.Id, new GenerateMindMapRequest("Summarize large doc", SourceType: "Document", SourceId: doc.Id));
+        Assert.True(res.IsSuccess);
+
+        var prompt = _fakeLlmService.LastRequest?.Messages.FirstOrDefault()?.Content;
+        Assert.NotNull(prompt);
+
+        // Verify Phase 5 distributed sampling: includes beginning, middle, and critical end!
+        Assert.Contains("BEGINNING_SECTION_CHUNK_0", prompt);
+        Assert.Contains("CORE_MIDDLE_CHUNK_10", prompt);
+        // Under the old content[..8000], CHUNK_19 would have been completely truncated and missing!
+        Assert.Contains("CRITICAL_END_CONCLUSION_CHUNK_19", prompt);
+
+        // Ensure character budget is respected (within ~12000 max prompt characters)
+        Assert.True(prompt.Length < 12000, "Prompt length must remain strictly bounded");
+    }
+
+    [Fact]
+    public async Task ResolveSourceContent_LargeDocument_WithGappedChunks_SelectsProperly()
+    {
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Gapped Chunks Doc",
+            FileName = "gapped.pdf"
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        // Non-contiguous chunk indices: 0, 7, 23, 89, 250
+        var indices = new[] { 0, 7, 23, 89, 250 };
+        for (int i = 0; i < indices.Length; i++)
+        {
+            _context.DocumentChunks.Add(new DocumentChunk
+            {
+                DocumentId = doc.Id,
+                WorkspaceId = _workspaceA.Id,
+                ChunkIndex = indices[i],
+                StartPosition = indices[i] * 500,
+                EndPosition = (indices[i] + 1) * 500,
+                Text = $"GAPPED_CHUNK_INDEX_{indices[i]} " + new string('y', 400)
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        _fakeLlmService.ResponseToReturn = @"{ ""title"": ""Gapped Map"", ""nodes"": [ { ""temporaryId"": ""r"", ""title"": ""Root"" } ], ""edges"": [] }";
+
+        var res = await _aiMindMapService.GenerateMindMapAsync(_workspaceA.Id, new GenerateMindMapRequest("Prompt gapped", SourceType: "Document", SourceId: doc.Id));
+        Assert.True(res.IsSuccess);
+
+        var prompt = _fakeLlmService.LastRequest?.Messages.FirstOrDefault()?.Content;
+        Assert.NotNull(prompt);
+        Assert.Contains("GAPPED_CHUNK_INDEX_0", prompt);
+        Assert.Contains("GAPPED_CHUNK_INDEX_250", prompt);
+    }
+
+    [Fact]
+    public async Task ResolveSourceContent_LargeExtractedTextWithoutChunks_UsesDistributedFallback()
+    {
+        // 25,000 character document with no DocumentChunk records
+        var beginningMarker = "EXTRACTED_PROLOGUE_MARKER";
+        var middleMarker = "EXTRACTED_MIDPOINT_MARKER";
+        var endMarker = "EXTRACTED_EPILOGUE_MARKER";
+
+        var longText = beginningMarker + new string('z', 10000) + middleMarker + new string('z', 10000) + endMarker;
+
+        var doc = new Document
+        {
+            WorkspaceId = _workspaceA.Id,
+            Title = "Raw Text Document Without Chunks",
+            FileName = "raw.txt",
+            ExtractedText = longText
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        _fakeLlmService.ResponseToReturn = @"{ ""title"": ""Fallback Map"", ""nodes"": [ { ""temporaryId"": ""r"", ""title"": ""Root"" } ], ""edges"": [] }";
+
+        var res = await _aiMindMapService.GenerateMindMapAsync(_workspaceA.Id, new GenerateMindMapRequest("Prompt raw", SourceType: "Document", SourceId: doc.Id));
+        Assert.True(res.IsSuccess);
+
+        var prompt = _fakeLlmService.LastRequest?.Messages.FirstOrDefault()?.Content;
+        Assert.NotNull(prompt);
+        Assert.Contains(beginningMarker, prompt);
+        Assert.Contains(middleMarker, prompt);
+        Assert.Contains(endMarker, prompt);
+    }
+
+    [Fact]
+    public async Task FindRelatedKnowledge_ExcludesOtherUsers_PersonalStudyResources()
+    {
+        // Alice creates personal StudyTopic, Quiz, Flashcard in Workspace A
+        var aliceTopic = new StudyTopic
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Title = "Alice Quantum Computing Topic"
+        };
+        var aliceQuiz = new Quiz
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Title = "Alice Quantum Computing Quiz"
+        };
+        var aliceFlashcard = new Flashcard
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            FrontText = "Alice Quantum Computing Card",
+            BackText = "Quantum Superposition"
+        };
+        _context.StudyTopics.Add(aliceTopic);
+        _context.Quizzes.Add(aliceQuiz);
+        _context.Flashcards.Add(aliceFlashcard);
+
+        // Create shared MindMap and node in Workspace A
+        var map = await _mindMapService.CreateMindMapAsync(_workspaceA.Id, new CreateMindMapRequest("Quantum Map"));
+        var node = await _mindMapService.CreateNodeAsync(_workspaceA.Id, map.Value.Id, new CreateMindMapNodeRequest("Quantum Computing", X: 100, Y: 100));
+        await _context.SaveChangesAsync();
+
+        // 1. Bob (other user with membership in Workspace A) searches related knowledge in Workspace A
+        if (!await _context.WorkspaceMembers.AnyAsync(m => m.WorkspaceId == _workspaceA.Id && m.UserId == _otherUser.Id))
+        {
+            _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceA.Id, UserId = _otherUser.Id, Role = WorkspaceRole.Editor });
+            await _context.SaveChangesAsync();
+        }
+
+        _currentUserService.UserId = _otherUser.Id;
+        _currentUserService.Email = _otherUser.Email;
+
+        var bobResult = await _aiMindMapService.FindRelatedKnowledgeAsync(_workspaceA.Id, map.Value.Id, node.Value.Id, new FindRelatedKnowledgeRequest());
+        Assert.True(bobResult.IsSuccess);
+        // Bob MUST NOT see Alice's personal StudyTopic, Quiz, or Flashcard!
+        Assert.DoesNotContain(bobResult.Value.RelatedItems, i => i.Title.Contains("Alice Quantum"));
+
+        // 2. Alice searches related knowledge in Workspace A
+        _currentUserService.UserId = _testUser.Id;
+        _currentUserService.Email = _testUser.Email;
+
+        var aliceResult = await _aiMindMapService.FindRelatedKnowledgeAsync(_workspaceA.Id, map.Value.Id, node.Value.Id, new FindRelatedKnowledgeRequest());
+        Assert.True(aliceResult.IsSuccess);
+        // Alice DOES see her own study resources
+        Assert.Contains(aliceResult.Value.RelatedItems, i => i.Title == "Alice Quantum Computing Topic");
+        Assert.Contains(aliceResult.Value.RelatedItems, i => i.Title == "Alice Quantum Computing Quiz");
+        Assert.Contains(aliceResult.Value.RelatedItems, i => i.Title == "Alice Quantum Computing Card");
+    }
+
+    [Fact]
+    public async Task GetNodeKnowledgeContext_RejectsOtherUsers_StudyTopic()
+    {
+        // Alice creates personal StudyTopic
+        var aliceTopic = new StudyTopic
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Title = "Alice Secret Research Topic",
+            Description = "Confidential thesis findings"
+        };
+        _context.StudyTopics.Add(aliceTopic);
+        await _context.SaveChangesAsync();
+
+        // Alice creates Mind Map and node linking to her topic
+        _currentUserService.UserId = _testUser.Id;
+        _currentUserService.Email = _testUser.Email;
+
+        var map = await _mindMapService.CreateMindMapAsync(_workspaceA.Id, new CreateMindMapRequest("Secret Research Map"));
+        var node = await _mindMapService.CreateNodeAsync(_workspaceA.Id, map.Value.Id, new CreateMindMapNodeRequest(
+            Title: "Thesis Node",
+            X: 100,
+            Y: 100,
+            LinkedEntityType: "StudyTopic",
+            LinkedEntityId: aliceTopic.Id));
+        Assert.True(node.IsSuccess);
+
+        // 1. Bob attempts to access knowledge context of Alice's personal StudyTopic
+        if (!await _context.WorkspaceMembers.AnyAsync(m => m.WorkspaceId == _workspaceA.Id && m.UserId == _otherUser.Id))
+        {
+            _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceA.Id, UserId = _otherUser.Id, Role = WorkspaceRole.Editor });
+            await _context.SaveChangesAsync();
+        }
+
+        _currentUserService.UserId = _otherUser.Id;
+        _currentUserService.Email = _otherUser.Email;
+
+        var bobCtx = await _mindMapService.GetNodeKnowledgeContextAsync(_workspaceA.Id, map.Value.Id, node.Value.Id);
+        Assert.False(bobCtx.IsSuccess);
+        Assert.Equal("KnowledgeLink.NotFound", bobCtx.Error.Code);
+
+        // 2. Alice accesses knowledge context of her own StudyTopic
+        _currentUserService.UserId = _testUser.Id;
+        _currentUserService.Email = _testUser.Email;
+
+        var aliceCtx = await _mindMapService.GetNodeKnowledgeContextAsync(_workspaceA.Id, map.Value.Id, node.Value.Id);
+        Assert.True(aliceCtx.IsSuccess);
+        Assert.Equal("Alice Secret Research Topic", aliceCtx.Value.EntityTitle);
+        Assert.Contains("Confidential thesis findings", aliceCtx.Value.Snippet);
+    }
+
+    [Fact]
+    public async Task CreateNode_RejectsLinkingToOtherUsers_StudyTopic()
+    {
+        // Alice creates personal StudyTopic
+        var aliceTopic = new StudyTopic
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Title = "Alice Private Topic"
+        };
+        _context.StudyTopics.Add(aliceTopic);
+        await _context.SaveChangesAsync();
+
+        // Bob tries to link a node to Alice's personal StudyTopic
+        if (!await _context.WorkspaceMembers.AnyAsync(m => m.WorkspaceId == _workspaceA.Id && m.UserId == _otherUser.Id))
+        {
+            _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceA.Id, UserId = _otherUser.Id, Role = WorkspaceRole.Editor });
+            await _context.SaveChangesAsync();
+        }
+
+        _currentUserService.UserId = _otherUser.Id;
+        _currentUserService.Email = _otherUser.Email;
+
+        var map = await _mindMapService.CreateMindMapAsync(_workspaceA.Id, new CreateMindMapRequest("Bob Map"));
+        var linkRes = await _mindMapService.CreateNodeAsync(_workspaceA.Id, map.Value.Id, new CreateMindMapNodeRequest(
+            Title: "Illegal Link Node",
+            X: 100,
+            Y: 100,
+            LinkedEntityType: "StudyTopic",
+            LinkedEntityId: aliceTopic.Id));
+
+        Assert.False(linkRes.IsSuccess);
+        Assert.Equal("KnowledgeLink.NotFound", linkRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CreateBoardItem_RejectsLinkingToOtherUsers_StudyTopic()
+    {
+        // Alice creates personal StudyTopic
+        var aliceTopic = new StudyTopic
+        {
+            WorkspaceId = _workspaceA.Id,
+            UserId = _testUser.Id,
+            Title = "Alice Private Study Topic"
+        };
+        _context.StudyTopics.Add(aliceTopic);
+        await _context.SaveChangesAsync();
+
+        // Bob tries to link a board item to Alice's personal StudyTopic
+        if (!await _context.WorkspaceMembers.AnyAsync(m => m.WorkspaceId == _workspaceA.Id && m.UserId == _otherUser.Id))
+        {
+            _context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = _workspaceA.Id, UserId = _otherUser.Id, Role = WorkspaceRole.Editor });
+            await _context.SaveChangesAsync();
+        }
+
+        _currentUserService.UserId = _otherUser.Id;
+        _currentUserService.Email = _otherUser.Email;
+
+        var board = await _boardService.CreateBoardAsync(_workspaceA.Id, new CreateBoardRequest("Bob Board", null, BoardType.Kanban));
+        var linkRes = await _boardService.CreateBoardItemAsync(_workspaceA.Id, board.Value.Id, new CreateBoardItemRequest(
+            Type: BoardItemType.StickyNote,
+            Title: "Illegal Link Item",
+            X: 100,
+            Y: 100,
+            LinkedEntityType: "StudyTopic",
+            LinkedEntityId: aliceTopic.Id));
+
+        Assert.False(linkRes.IsSuccess);
+        Assert.Equal("KnowledgeLink.NotFound", linkRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CreateNode_RejectsCrossWorkspace_KnowledgeLink()
+    {
+        // Page belongs to Workspace B
+        var pageB = new Page
+        {
+            WorkspaceId = _workspaceB.Id,
+            Title = "Workspace B Private Page",
+            ContentJson = "{}"
+        };
+        _context.Pages.Add(pageB);
+        await _context.SaveChangesAsync();
+
+        // User tries to link node in Workspace A to Page in Workspace B
+        var mapA = await _mindMapService.CreateMindMapAsync(_workspaceA.Id, new CreateMindMapRequest("Workspace A Map"));
+        var linkRes = await _mindMapService.CreateNodeAsync(_workspaceA.Id, mapA.Value.Id, new CreateMindMapNodeRequest(
+            Title: "Cross Workspace Node",
+            X: 100,
+            Y: 100,
+            LinkedEntityType: "Page",
+            LinkedEntityId: pageB.Id));
+
+        Assert.False(linkRes.IsSuccess);
+        Assert.Equal("KnowledgeLink.NotFound", linkRes.Error.Code);
+    }
+
+    [Fact]
+    public async Task CreateBoardItem_RejectsCrossWorkspace_KnowledgeLink()
+    {
+        // Note belongs to Workspace B
+        var noteB = new Note
+        {
+            WorkspaceId = _workspaceB.Id,
+            Title = "Workspace B Private Note",
+            Content = "Private Note Content"
+        };
+        _context.Notes.Add(noteB);
+        await _context.SaveChangesAsync();
+
+        // User tries to link BoardItem in Workspace A to Note in Workspace B
+        var boardA = await _boardService.CreateBoardAsync(_workspaceA.Id, new CreateBoardRequest("Workspace A Board", null, BoardType.Kanban));
+        var linkRes = await _boardService.CreateBoardItemAsync(_workspaceA.Id, boardA.Value.Id, new CreateBoardItemRequest(
+            Type: BoardItemType.StickyNote,
+            Title: "Cross Workspace Item",
+            X: 100,
+            Y: 100,
+            LinkedEntityType: "Note",
+            LinkedEntityId: noteB.Id));
+
+        Assert.False(linkRes.IsSuccess);
+        Assert.Equal("KnowledgeLink.NotFound", linkRes.Error.Code);
     }
 
     #endregion

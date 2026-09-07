@@ -35,7 +35,7 @@ public class BoardsController : ApiControllerBase
     {
         if (request == null) return BadRequest("Request body is required.");
         var result = await _boardService.CreateBoardAsync(workspaceId, request, ct);
-        return HandleCreatedResult(result, nameof(GetBoardById), new { workspaceId, boardId = result.Value?.Id });
+        return HandleCreatedResult(result, nameof(GetBoardById), v => new { workspaceId, boardId = v.Id });
     }
 
     [HttpPut("{boardId:guid}")]
@@ -74,7 +74,7 @@ public class BoardsController : ApiControllerBase
     {
         if (request == null) return BadRequest("Request body is required.");
         var result = await _boardService.CreateBoardItemAsync(workspaceId, boardId, request, ct);
-        return HandleCreatedResult(result, nameof(GetBoardItemById), new { workspaceId, boardId, itemId = result.Value?.Id });
+        return HandleCreatedResult(result, nameof(GetBoardItemById), v => new { workspaceId, boardId, itemId = v.Id });
     }
 
     [HttpPut("{boardId:guid}/items/{itemId:guid}")]

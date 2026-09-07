@@ -140,6 +140,153 @@ public class VisualThinkingViewModelTests
         Assert.Empty(vm.CanvasItems);
     }
 
+    [Fact]
+    public async Task BoardsViewModel_MultiSelection_SelectAll_And_ClearSelection()
+    {
+        var boardId = Guid.NewGuid();
+        _fakeApiClient.Boards.Add(new BoardDto(boardId, _workspaceId, null, "Selection Board", null, BoardType.Kanban, 0, DateTime.UtcNow, null));
+        var vm = new BoardsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadBoardsAsync();
+
+        await vm.AddItemAsync("StickyNote");
+        await vm.AddItemAsync("StickyNote");
+        await vm.AddItemAsync("StickyNote");
+        Assert.Equal(3, vm.CanvasItems.Count);
+
+        // 1. Select All
+        vm.SelectAllCommand.Execute(null);
+        Assert.Equal(3, vm.SelectedItems.Count);
+        Assert.All(vm.CanvasItems, item => Assert.True(item.IsSelected));
+
+        // 2. Clear Selection
+        vm.ClearSelectionCommand.Execute(null);
+        Assert.Empty(vm.SelectedItems);
+        Assert.All(vm.CanvasItems, item => Assert.False(item.IsSelected));
+
+        // 3. Toggle Selection (Ctrl+click)
+        var firstItem = vm.CanvasItems[0];
+        vm.ToggleItemSelection(firstItem);
+        Assert.Single(vm.SelectedItems);
+        Assert.True(firstItem.IsSelected);
+
+        vm.ToggleItemSelection(firstItem);
+        Assert.Empty(vm.SelectedItems);
+        Assert.False(firstItem.IsSelected);
+
+        // 4. Set Single Selection
+        var secondItem = vm.CanvasItems[1];
+        vm.SetSingleSelection(secondItem);
+        Assert.Single(vm.SelectedItems);
+        Assert.Equal(secondItem, vm.SelectedItems[0]);
+    }
+
+    [Fact]
+    public async Task BoardsViewModel_MultiItemDrag_MovesAllSelectedItems_And_SupportsUndo()
+    {
+        var boardId = Guid.NewGuid();
+        _fakeApiClient.Boards.Add(new BoardDto(boardId, _workspaceId, null, "Drag Board", null, BoardType.Kanban, 0, DateTime.UtcNow, null));
+        var vm = new BoardsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadBoardsAsync();
+
+        await vm.AddItemAsync("StickyNote");
+        await vm.AddItemAsync("StickyNote");
+        var item1 = vm.CanvasItems[0];
+        var item2 = vm.CanvasItems[1];
+
+        var origX1 = item1.X;
+        var origY1 = item1.Y;
+        var origX2 = item2.X;
+        var origY2 = item2.Y;
+
+        // Select both items
+        vm.SelectAllCommand.Execute(null);
+
+        // Drag both items together
+        vm.MoveSelectedItems(60, 80);
+        Assert.Equal(origX1 + 60, item1.X);
+        Assert.Equal(origY1 + 80, item1.Y);
+        Assert.Equal(origX2 + 60, item2.X);
+        Assert.Equal(origY2 + 80, item2.Y);
+
+        // Undo
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(origX1, item1.X);
+        Assert.Equal(origY1, item1.Y);
+        Assert.Equal(origX2, item2.X);
+        Assert.Equal(origY2, item2.Y);
+
+        // Redo
+        Assert.True(vm.UndoRedo.CanRedo);
+        vm.RedoCommand.Execute(null);
+        Assert.Equal(origX1 + 60, item1.X);
+        Assert.Equal(origY1 + 80, item1.Y);
+        Assert.Equal(origX2 + 60, item2.X);
+        Assert.Equal(origY2 + 80, item2.Y);
+    }
+
+    [Fact]
+    public async Task BoardsViewModel_ResizeItem_ClampsToBounds_And_SupportsUndo()
+    {
+        var boardId = Guid.NewGuid();
+        _fakeApiClient.Boards.Add(new BoardDto(boardId, _workspaceId, null, "Resize Board", null, BoardType.Kanban, 0, DateTime.UtcNow, null));
+        var vm = new BoardsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadBoardsAsync();
+
+        await vm.AddItemAsync("StickyNote");
+        var item = vm.CanvasItems[0];
+        var originalW = item.Width;
+        var originalH = item.Height;
+
+        // Resize below minimum bounds (min 50 width, min 40 height)
+        vm.ResizeItem(item.Id, 30, 20);
+        Assert.Equal(50, item.Width);
+        Assert.Equal(40, item.Height);
+
+        // Undo restores original size
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(originalW, item.Width);
+        Assert.Equal(originalH, item.Height);
+
+        // Redo restores clamped size
+        vm.RedoCommand.Execute(null);
+        Assert.Equal(50, item.Width);
+        Assert.Equal(40, item.Height);
+    }
+
+    [Fact]
+    public async Task BoardsViewModel_CopyPaste_And_DeleteSelected_SupportsUndo()
+    {
+        var boardId = Guid.NewGuid();
+        _fakeApiClient.Boards.Add(new BoardDto(boardId, _workspaceId, null, "Clipboard Board", null, BoardType.Kanban, 0, DateTime.UtcNow, null));
+        var vm = new BoardsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadBoardsAsync();
+
+        await vm.AddItemAsync("StickyNote");
+        var item = vm.CanvasItems[0];
+        vm.SetSingleSelection(item);
+
+        // Copy and Paste
+        vm.CopySelectedCommand.Execute(null);
+        await vm.PasteAsync();
+
+        Assert.Equal(2, vm.CanvasItems.Count);
+        var pastedItem = vm.CanvasItems.First(i => i.Id != item.Id);
+        Assert.Equal(200, pastedItem.X);
+        Assert.Equal(150, pastedItem.Y);
+
+        // Select all and Delete
+        vm.SelectAllCommand.Execute(null);
+        await vm.DeleteSelectedAsync();
+        Assert.Empty(vm.CanvasItems);
+
+        // Undo restore deleted items
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(2, vm.CanvasItems.Count);
+    }
+
     #endregion
 
     #region MindMapsViewModel Tests
@@ -305,6 +452,218 @@ public class VisualThinkingViewModelTests
 
         Assert.Equal(1, _fakeNavigationService.NavigationCount);
         Assert.Equal(typeof(PagesViewModel), _fakeNavigationService.LastNavigatedType);
+    }
+
+    [Fact]
+    public async Task MindMapsViewModel_MultiSelection_SelectAll_And_ClearSelection()
+    {
+        var mapId = Guid.NewGuid();
+        _fakeApiClient.MindMaps.Add(new MindMapDto(mapId, _workspaceId, null, "Selection Map", null, null, 0, 0, DateTime.UtcNow, null));
+        var vm = new MindMapsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadMindMapsAsync();
+
+        await vm.AddNodeAsync("Node 1");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Node 2");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Node 3");
+        Assert.Equal(3, vm.CanvasNodes.Count);
+
+        // 1. Select All
+        vm.SelectAllCommand.Execute(null);
+        Assert.Equal(3, vm.SelectedNodes.Count);
+        Assert.All(vm.CanvasNodes, n => Assert.True(n.IsSelected));
+
+        // 2. Clear Selection
+        vm.ClearSelectionCommand.Execute(null);
+        Assert.Empty(vm.SelectedNodes);
+        Assert.All(vm.CanvasNodes, n => Assert.False(n.IsSelected));
+
+        // 3. Toggle Selection (Ctrl+click)
+        var n1 = vm.CanvasNodes[0];
+        vm.ToggleNodeSelection(n1);
+        Assert.Single(vm.SelectedNodes);
+        Assert.True(n1.IsSelected);
+
+        vm.ToggleNodeSelection(n1);
+        Assert.Empty(vm.SelectedNodes);
+        Assert.False(n1.IsSelected);
+
+        // 4. Set Single Selection
+        var n2 = vm.CanvasNodes[1];
+        vm.SetSingleSelection(n2);
+        Assert.Single(vm.SelectedNodes);
+        Assert.Equal(n2, vm.SelectedNodes[0]);
+    }
+
+    [Fact]
+    public async Task MindMapsViewModel_MultiNodeDrag_MovesAllSelectedNodes_And_UpdatesConnectedEdges()
+    {
+        var mapId = Guid.NewGuid();
+        _fakeApiClient.MindMaps.Add(new MindMapDto(mapId, _workspaceId, null, "Drag Map", null, null, 0, 0, DateTime.UtcNow, null));
+        var vm = new MindMapsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadMindMapsAsync();
+
+        await vm.AddNodeAsync("Node A");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Node B");
+
+        var nodeA = vm.CanvasNodes[0];
+        var nodeB = vm.CanvasNodes[1];
+
+        await vm.ConnectNodesAsync(nodeA.Id, nodeB.Id);
+        Assert.Single(vm.CanvasEdges);
+        var edge = vm.CanvasEdges[0];
+
+        var origAX = nodeA.X;
+        var origAY = nodeA.Y;
+        var origBX = nodeB.X;
+        var origBY = nodeB.Y;
+        var origFromX = edge.SourceX;
+        var origFromY = edge.SourceY;
+        var origToX = edge.TargetX;
+        var origToY = edge.TargetY;
+
+        // Select both nodes and drag together
+        vm.SelectAllCommand.Execute(null);
+        vm.MoveSelectedNodes(50, 70);
+
+        Assert.Equal(origAX + 50, nodeA.X);
+        Assert.Equal(origAY + 70, nodeA.Y);
+        Assert.Equal(origBX + 50, nodeB.X);
+        Assert.Equal(origBY + 70, nodeB.Y);
+
+        // Verify edge geometry followed the nodes
+        Assert.Equal(origFromX + 50, edge.SourceX);
+        Assert.Equal(origFromY + 70, edge.SourceY);
+        Assert.Equal(origToX + 50, edge.TargetX);
+        Assert.Equal(origToY + 70, edge.TargetY);
+
+        // Undo
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(origAX, nodeA.X);
+        Assert.Equal(origAY, nodeA.Y);
+        Assert.Equal(origBX, nodeB.X);
+        Assert.Equal(origBY, nodeB.Y);
+        Assert.Equal(origFromX, edge.SourceX);
+        Assert.Equal(origFromY, edge.SourceY);
+        Assert.Equal(origToX, edge.TargetX);
+        Assert.Equal(origToY, edge.TargetY);
+    }
+
+    [Fact]
+    public async Task MindMapsViewModel_ResizeNode_ClampsToBounds_And_UpdatesEdges()
+    {
+        var mapId = Guid.NewGuid();
+        _fakeApiClient.MindMaps.Add(new MindMapDto(mapId, _workspaceId, null, "Resize Map", null, null, 0, 0, DateTime.UtcNow, null));
+        var vm = new MindMapsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadMindMapsAsync();
+
+        await vm.AddNodeAsync("Parent");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Child");
+
+        var p = vm.CanvasNodes[0];
+        var c = vm.CanvasNodes[1];
+        await vm.ConnectNodesAsync(p.Id, c.Id);
+
+        var origW = p.Width;
+        var origH = p.Height;
+
+        // Resize below minimum bounds (min 80 width, min 40 height)
+        vm.ResizeNode(p.Id, 50, 20);
+        Assert.Equal(80, p.Width);
+        Assert.Equal(40, p.Height);
+
+        // Edge From point should update with new dimensions (center)
+        var edge = vm.CanvasEdges[0];
+        Assert.Equal(p.X + 40, edge.SourceX);
+        Assert.Equal(p.Y + 20, edge.SourceY);
+
+        // Undo restores original size
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(origW, p.Width);
+        Assert.Equal(origH, p.Height);
+    }
+
+    [Fact]
+    public async Task MindMapsViewModel_ConnectNodes_RejectsSelfAndDuplicateConnections()
+    {
+        var mapId = Guid.NewGuid();
+        _fakeApiClient.MindMaps.Add(new MindMapDto(mapId, _workspaceId, null, "Connect Validation Map", null, null, 0, 0, DateTime.UtcNow, null));
+        var vm = new MindMapsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadMindMapsAsync();
+
+        await vm.AddNodeAsync("Node 1");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Node 2");
+
+        var n1 = vm.CanvasNodes[0];
+        var n2 = vm.CanvasNodes[1];
+
+        // 1. Self connection must be rejected
+        await vm.ConnectNodesAsync(n1.Id, n1.Id);
+        Assert.Empty(vm.CanvasEdges);
+
+        // 2. First valid connection succeeds
+        await vm.ConnectNodesAsync(n1.Id, n2.Id);
+        Assert.Single(vm.CanvasEdges);
+
+        // 3. Duplicate connection must be rejected
+        await vm.ConnectNodesAsync(n1.Id, n2.Id);
+        Assert.Single(vm.CanvasEdges);
+
+        // 4. Undo edge creation
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Empty(vm.CanvasEdges);
+
+        // 5. Redo edge creation
+        Assert.True(vm.UndoRedo.CanRedo);
+        vm.RedoCommand.Execute(null);
+        Assert.Single(vm.CanvasEdges);
+    }
+
+    [Fact]
+    public async Task MindMapsViewModel_CopyPaste_And_DeleteSelected_WithEdge_SupportsUndo()
+    {
+        var mapId = Guid.NewGuid();
+        _fakeApiClient.MindMaps.Add(new MindMapDto(mapId, _workspaceId, null, "Clipboard Map", null, null, 0, 0, DateTime.UtcNow, null));
+        var vm = new MindMapsViewModel(_fakeApiClient, _userSession, _fakeNavigationService, _fakeDialogService);
+        await vm.LoadMindMapsAsync();
+
+        await vm.AddNodeAsync("Source Node");
+        vm.SelectedNode = null;
+        await vm.AddNodeAsync("Target Node");
+
+        var n1 = vm.CanvasNodes[0];
+        var n2 = vm.CanvasNodes[1];
+        await vm.ConnectNodesAsync(n1.Id, n2.Id);
+        Assert.Single(vm.CanvasEdges);
+
+        // 1. Copy & Paste single node
+        vm.SetSingleSelection(n1);
+        vm.CopySelectedCommand.Execute(null);
+        await vm.PasteAsync();
+        Assert.Equal(3, vm.CanvasNodes.Count);
+
+        var pastedNode = vm.CanvasNodes.Last();
+        Assert.Equal(400, pastedNode.X);
+        Assert.Equal(200, pastedNode.Y);
+
+        // 2. Select all and Delete
+        vm.SelectAllCommand.Execute(null);
+        await vm.DeleteSelectedAsync();
+        Assert.Empty(vm.CanvasNodes);
+        Assert.Empty(vm.CanvasEdges);
+
+        // 3. Undo restores deleted nodes and edge
+        Assert.True(vm.UndoRedo.CanUndo);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(3, vm.CanvasNodes.Count);
+        Assert.Single(vm.CanvasEdges);
     }
 
     #endregion

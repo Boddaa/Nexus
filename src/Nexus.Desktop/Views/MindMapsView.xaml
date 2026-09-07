@@ -8,6 +8,16 @@
              d:DesignHeight="700" d:DesignWidth="1100"
              d:DataContext="{d:DesignInstance Type=vm:MindMapsViewModel}">
 
+    <UserControl.InputBindings>
+        <KeyBinding Gesture="Ctrl+A" Command="{Binding SelectAllCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding ClearSelectionCommand}" />
+        <KeyBinding Key="Delete" Command="{Binding DeleteSelectedCommand}" />
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+C" Command="{Binding CopySelectedCommand}" />
+        <KeyBinding Gesture="Ctrl+V" Command="{Binding PasteCommand}" />
+    </UserControl.InputBindings>
+
     <Grid Background="{StaticResource BgDarkestBrush}">
         <Grid.RowDefinitions>
             <!-- Top Action Header -->
@@ -166,6 +176,16 @@
                                                 <TextBlock Text="🔗 Knowledge" Foreground="{StaticResource AccentCyanBrush}" />
                                             </Button>
                                         </StackPanel>
+
+                                        <!-- Bottom-right Resize Handle -->
+                                        <Rectangle Grid.Row="2" Width="10" Height="10" Fill="{StaticResource AccentCyanBrush}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,-6,-6" RadiusX="2" RadiusY="2"
+                                                   Cursor="SizeNWSE"
+                                                   Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisConverter}}"
+                                                   MouseDown="OnNodeResizeMouseDown"
+                                                   MouseMove="OnNodeResizeMouseMove"
+                                                   MouseUp="OnNodeResizeMouseUp" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>

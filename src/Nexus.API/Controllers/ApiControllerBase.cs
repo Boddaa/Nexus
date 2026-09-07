@@ -27,6 +27,16 @@ public abstract class ApiControllerBase : ControllerBase
         return HandleError(result.Error);
     }
 
+    protected IActionResult HandleCreatedResult<T>(Result<T> result, string actionName, Func<T, object> routeValuesFactory)
+    {
+        if (result.IsSuccess)
+        {
+            return CreatedAtAction(actionName, routeValuesFactory(result.Value), result.Value);
+        }
+
+        return HandleError(result.Error);
+    }
+
     protected IActionResult HandleCreatedResult<T>(Result<T> result, string actionName, object routeValues)
     {
         if (result.IsSuccess)
