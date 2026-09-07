@@ -235,7 +235,7 @@
             </Border>
 
             <!-- 2. CENTER CONTENT AREA -->
-            <Grid Grid.Column="1" Background="{StaticResource BgDarkColor}">
+            <Grid Grid.Column="1" Background="{StaticResource BgDarkBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
