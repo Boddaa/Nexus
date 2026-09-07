@@ -15,11 +15,19 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        var envName = configuration["ASPNETCORE_ENVIRONMENT"] ?? configuration["DOTNET_ENVIRONMENT"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        var isProduction = string.Equals(envName, "Production", StringComparison.OrdinalIgnoreCase);
+
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? "Server=(localdb)\\mssqllocaldb;Database=NexusDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
         if (connectionString.StartsWith("InMemory:", StringComparison.OrdinalIgnoreCase))
         {
+            if (isProduction)
+            {
+                throw new InvalidOperationException("InMemory database provider is strictly prohibited in Production environment. A valid SQL Server connection string is required.");
+            }
+
             var dbName = connectionString.Substring("InMemory:".Length);
             services.AddDbContext<AppDbContext>(options =>
             {
@@ -86,13 +94,7 @@ public static class DependencyInjection
         services.AddScoped<Nexus.Infrastructure.AI.LLM.ILlmProvider, Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>();
         services.AddScoped<Nexus.Application.Common.Interfaces.ILLMService, Nexus.Infrastructure.AI.LLM.LLMService>();
 
-        services.AddSingleton<IChatService, MockChatService>();
-        services.AddSingleton<IVectorStore, InMemoryVectorStore>();
-        services.AddScoped<IAiDocumentAnalyzer, MockAiDocumentAnalyzer>();
-        services.AddScoped<IAiStudyService, MockAiStudyService>();
 
-        // Search
-        services.AddScoped<IHybridSearchService, HybridSearchService>();
 
         return services;
     }

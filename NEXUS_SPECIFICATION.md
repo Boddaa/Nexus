@@ -430,6 +430,22 @@ Topic
 | **Phase 6** | **Study Engine & AI Tutor** | مواضيع المذاكرة (Study Topics)، البطاقات التعليمية التكرارية بنظام SuperMemo-2 (SM-2 Spaced Repetition)، توليد الاختبارات التفاعلية وتصحيحها، ونظام الـ AI Tutor والتقييم المعرفي. | ✅ مكتمل ومختبر |
 | **Phase 7** | **Visual Thinking & Canvas** | لوحات المذاكرة وإدارة المهام (Boards & Kanban Items)، الخرائط الذهنية (Mind Maps & Nodes/Edges)، خوارزميات التوزيع التلقائي (Hierarchical Tree / Force-Directed)، وتوليد الخرائط بالذكاء الاصطناعي. | ✅ مكتمل ومختبر |
 | **Phase 8** | **Production Hardening & Finalization** | الأمان المشدد (JWT Fail-Fast / Environment-aware HTTPS / CORS Lockdown)، منع تسريب البيانات الحساسة عبر Middleware موحد، فحص صحة النظام (`/health`)، تحسين استعلامات الأداء، وتعزيز متانة الـ Desktop Client. | ✅ مكتمل ومختبر |
+| **Final Hardening** | **Safety, API Semantics & Legacy Cleanup** | تدقيق وإلغاء تسجيلات Mock AI القديمة من DI الإنتاجي، ضبط دلالات REST الصارمة (401 للمستخدم غير المصادق vs 403 للوصول الممنوع)، فرض سقوف أمان واسترجاع محدد (Bounded Endpoints & LimitExceeded)، والتحقق الصارم من قاعدة البيانات عند الإقلاع. | ✅ مكتمل ومختبر |
+
+---
+
+### 🔒 عقد أخطاء الـ API ودلالات الـ HTTP (API Error & Authorization Contract)
+
+يتبع NEXUS المعايير القياسية لبروتوكول HTTP وفقًا لـ RFC 7235:
+
+| رمز الحالة (Status Code) | الدلالة (Semantics) | شرط الإرجاع (Trigger Condition) |
+|---|---|---|
+| `400 Bad Request` | فشل التحقق من صحة المدخلات | مدخلات ناقصة، صيغة غير مدعومة، أو تجاوز حدود التحقق |
+| `401 Unauthorized` | غياب المصادقة (Unauthenticated) | توكن JWT مفقود، غير صالح، أو منتهي الصلاحية |
+| `403 Forbidden` | وصول مرفوض (Access Denied) | مستخدم مصادق عليه يحاول الوصول لمساحة عمل أخرى بدون صلاحية |
+| `404 Not Found` | العنصر غير موجود | الكيان المطلوب غير موجود في مساحة العمل المحددة |
+| `409 Conflict` | تعارض في حالة المورد | تكرار البريد الإلكتروني عند التسجيل، أو تعارض في التعديل المتزامن |
+| `500 Internal Server Error` | خطأ غير معالج في الخادم | خطأ داخلي مع حجب التفاصيل الحساسة في بيئة الإنتاج وتسجيلها بأمان |
 
 ---
 
@@ -441,4 +457,4 @@ Topic
 
 ---
 
-*Document updated and verified for Phase 8 completion in NEXUS workspace.*
+*Document updated and verified for Phase 8 & Final Hardening Pass completion in NEXUS workspace.*

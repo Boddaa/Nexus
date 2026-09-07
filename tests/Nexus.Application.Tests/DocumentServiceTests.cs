@@ -400,7 +400,7 @@ public class DocumentServiceTests
         var result = await _documentService.GetDocumentsAsync(_otherWorkspace.Id);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(Error.Unauthorized, result.Error);
+        Assert.Equal("Workspace.AccessDenied", result.Error.Code);
     }
 
     #endregion

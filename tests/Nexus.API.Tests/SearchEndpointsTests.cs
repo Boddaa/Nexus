@@ -151,9 +151,9 @@ public class SearchEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Single(resA!.Items);
         Assert.Equal("Secret Token Alpha", resA.Items[0].Title);
 
-        // User A attempts to search Workspace B -> Unauthorized
+        // User A attempts to search Workspace B -> Forbidden
         var unauthorizedRes = await clientA.GetAsync($"/api/workspaces/{workspaceB.Id}/search?q=Secret");
-        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedRes.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, unauthorizedRes.StatusCode);
     }
 
     [Fact]

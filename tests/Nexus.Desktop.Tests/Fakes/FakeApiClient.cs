@@ -712,11 +712,16 @@ public class FakeApiClient : IApiClient
         return Task.FromResult(Result.Success<IReadOnlyList<FlashcardDto>>(list));
     }
 
-    public Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    public Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, int? limit = null, CancellationToken cancellationToken = default)
     {
         if (ShouldFail) return Task.FromResult(Result.Failure<IReadOnlyList<FlashcardDto>>(FailureError));
         var now = DateTime.UtcNow;
-        var list = Flashcards.Where(f => (!topicId.HasValue || f.StudyTopicId == topicId.Value) && f.NextReviewAtUtc <= now).ToList();
+        var query = Flashcards.Where(f => (!topicId.HasValue || f.StudyTopicId == topicId.Value) && f.NextReviewAtUtc <= now);
+        if (limit.HasValue)
+        {
+            query = query.Take(limit.Value);
+        }
+        var list = query.ToList();
         return Task.FromResult(Result.Success<IReadOnlyList<FlashcardDto>>(list));
     }
 

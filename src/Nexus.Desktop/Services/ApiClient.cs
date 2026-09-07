@@ -88,7 +88,7 @@ public interface IApiClient
     Task<Result<StudySessionDto>> CompleteStudySessionAsync(Guid workspaceId, Guid sessionId, CompleteStudySessionRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<IReadOnlyList<FlashcardDto>>> GetFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
-    Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, int? limit = null, CancellationToken cancellationToken = default);
     Task<Result<FlashcardDto>> CreateFlashcardAsync(Guid workspaceId, Guid? topicId, CreateFlashcardRequest request, CancellationToken cancellationToken = default);
     Task<Result<FlashcardDto>> ReviewFlashcardAsync(Guid workspaceId, Guid flashcardId, ReviewFlashcardRequest request, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<FlashcardDto>>> GenerateFlashcardsAsync(Guid workspaceId, Guid? topicId, GenerateFlashcardsRequest request, CancellationToken cancellationToken = default);
@@ -1250,12 +1250,16 @@ public class ApiClient : IApiClient
         }
     }
 
-    public async Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(Guid workspaceId, Guid? topicId = null, int? limit = null, CancellationToken cancellationToken = default)
     {
         try
         {
             SetAuthorizationHeader();
-            var url = $"api/workspaces/{workspaceId}/study/flashcards/due" + (topicId.HasValue ? $"?topicId={topicId.Value}" : "");
+            var queryParams = new List<string>();
+            if (topicId.HasValue) queryParams.Add($"topicId={topicId.Value}");
+            if (limit.HasValue) queryParams.Add($"limit={limit.Value}");
+            var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
+            var url = $"api/workspaces/{workspaceId}/study/flashcards/due{queryString}";
             var response = await _httpClient.GetAsync(url, cancellationToken);
             if (response.IsSuccessStatusCode)
             {

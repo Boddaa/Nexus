@@ -36,27 +36,35 @@ public class DocumentService : IDocumentService
         _extractors = extractors;
     }
 
-    private async Task<bool> HasWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
+    private async Task<Result> ValidateWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
     {
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId is null)
         {
-            return false;
+            return Result.Failure(Error.Unauthorized);
         }
 
         var userId = _currentUserService.UserId.Value;
-        return await _context.Workspaces
+        var hasAccess = await _context.Workspaces
             .AsNoTracking()
             .AnyAsync(w => w.Id == workspaceId && !w.IsDeleted &&
                 (w.OwnerId == userId || w.Members.Any(m => m.UserId == userId && !m.IsDeleted)), cancellationToken);
+
+        if (!hasAccess)
+        {
+            return Result.Failure(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
+        }
+
+        return Result.Success();
     }
 
     public async Task<Result<DocumentDto>> UploadAsync(Guid workspaceId, UploadDocumentStreamRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<DocumentDto>(Error.Unauthorized);
+            return Result.Failure<DocumentDto>(accessCheck.Error);
         }
 
         // 1. Validate File Empty
@@ -194,9 +202,10 @@ public class DocumentService : IDocumentService
 
     public async Task<Result<IReadOnlyList<DocumentSummaryDto>>> GetDocumentsAsync(Guid workspaceId, Guid? pageId = null, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<IReadOnlyList<DocumentSummaryDto>>(Error.Unauthorized);
+            return Result.Failure<IReadOnlyList<DocumentSummaryDto>>(accessCheck.Error);
         }
 
         var query = _context.Documents
@@ -230,9 +239,10 @@ public class DocumentService : IDocumentService
 
     public async Task<Result<DocumentDetailDto>> GetDocumentByIdAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<DocumentDetailDto>(Error.Unauthorized);
+            return Result.Failure<DocumentDetailDto>(accessCheck.Error);
         }
 
         var document = await _context.Documents
@@ -266,9 +276,10 @@ public class DocumentService : IDocumentService
 
     public async Task<Result> DeleteAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure(Error.Unauthorized);
+            return accessCheck;
         }
 
         var document = await _context.Documents
@@ -292,9 +303,10 @@ public class DocumentService : IDocumentService
 
     public async Task<Result<DocumentFileDownloadDto>> GetFileStreamAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<DocumentFileDownloadDto>(Error.Unauthorized);
+            return Result.Failure<DocumentFileDownloadDto>(accessCheck.Error);
         }
 
         var document = await _context.Documents

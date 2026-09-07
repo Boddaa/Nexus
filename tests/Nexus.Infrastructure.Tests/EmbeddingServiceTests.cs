@@ -394,5 +394,39 @@ public class EmbeddingServiceTests
         Assert.Contains("model not found", ex.Message);
     }
 
+    [Fact]
+    public async Task EmbeddingService_Dispatches_To_Matching_Registered_Provider()
+    {
+        var dummyVector = new float[] { 0.1f, 0.2f, 0.3f };
+        var jsonResponse = JsonSerializer.Serialize(new
+        {
+            @object = "list",
+            data = new[] { new { @object = "embedding", index = 0, embedding = dummyVector } }
+        });
+
+        var mockHandler = new MockHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(jsonResponse, Encoding.UTF8, "application/json")
+        });
+
+        var openAiProvider = new OpenAiEmbeddingProvider(new HttpClient(mockHandler));
+        var ollamaProvider = new OllamaEmbeddingProvider(new HttpClient(mockHandler));
+        var providers = new IEmbeddingProvider[] { openAiProvider, ollamaProvider };
+
+        var options = Options.Create(new EmbeddingOptions
+        {
+            Provider = "OpenAI",
+            Model = "text-embedding-3-small",
+            ApiKey = "sk-test",
+            Dimensions = 3
+        });
+
+        var service = new EmbeddingService(options, providers, NullLogger<EmbeddingService>.Instance);
+        var result = await service.GenerateEmbeddingAsync("Hello");
+
+        Assert.NotNull(result);
+        Assert.Equal(dummyVector, result);
+    }
+
     #endregion
 }

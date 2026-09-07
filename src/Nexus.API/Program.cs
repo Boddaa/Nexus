@@ -38,6 +38,12 @@ if (!builder.Environment.IsDevelopment())
     {
         throw new InvalidOperationException("JwtSettings:SecretKey is required and must be at least 32 characters (256 bits) in production.");
     }
+
+    var defaultConnection = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (defaultConnection != null && defaultConnection.StartsWith("InMemory:", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("InMemory database provider is strictly prohibited in Production environment. A valid SQL Server connection string is required.");
+    }
 }
 else
 {
@@ -58,7 +64,7 @@ builder.Services.AddAuthentication(options =>
 .AddJwtBearer(options =>
 {
     options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-    options.SaveToken = true;
+    options.SaveToken = false; // Claims-based auth: raw token retention in AuthenticationProperties is disabled for security and memory efficiency
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -142,7 +148,8 @@ if (applyMigrations)
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
+        logger.LogCritical(ex, "A critical error occurred while migrating the database. Application startup aborted.");
+        throw;
     }
 }
 

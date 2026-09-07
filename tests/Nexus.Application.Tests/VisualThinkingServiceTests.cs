@@ -1162,5 +1162,33 @@ Instead of updating a row in place, every state change is an immutable event obj
         Assert.Equal("KnowledgeLink.NotFound", linkRes.Error.Code);
     }
 
+    [Fact]
+    public async Task GetMindMapById_WhenNodesExceedConfiguredCapacity_ReturnsExplicitLimitExceededError()
+    {
+        var createRes = await _mindMapService.CreateMindMapAsync(_workspaceA.Id, new CreateMindMapRequest("Capacity Test Map"));
+        Assert.True(createRes.IsSuccess);
+        var mapId = createRes.Value.Id;
+
+        // _options.MaxNodesPerMindMap is 20 in test setup.
+        // Add 25 nodes to trigger explicit limit check.
+        for (int i = 0; i < 25; i++)
+        {
+            _context.MindMapNodes.Add(new MindMapNode
+            {
+                MindMapId = mapId,
+                Title = $"Node {i}",
+                PositionX = i * 10,
+                PositionY = i * 10
+            });
+        }
+        await _context.SaveChangesAsync();
+
+        var getRes = await _mindMapService.GetMindMapByIdAsync(_workspaceA.Id, mapId);
+
+        Assert.False(getRes.IsSuccess);
+        Assert.Equal("MindMap.LimitExceeded", getRes.Error.Code);
+        Assert.Contains("exceeds maximum allowable capacity", getRes.Error.Description);
+    }
+
     #endregion
 }

@@ -55,7 +55,8 @@ public class SearchService : ISearchService
 
         if (!isMember)
         {
-            return Result.Failure<PagedResult<SearchResultDto>>(Error.Unauthorized);
+            return Result.Failure<PagedResult<SearchResultDto>>(
+                new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
         }
 
         // 3. Validate Query

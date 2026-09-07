@@ -153,16 +153,21 @@ public class StudyController : ApiControllerBase
     public async Task<IActionResult> GetDueFlashcards(
         Guid workspaceId,
         [FromQuery] Guid? topicId,
+        [FromQuery] int? limit,
         CancellationToken ct)
     {
-        var result = await _flashcardService.GetDueFlashcardsAsync(workspaceId, topicId, ct);
+        var result = await _flashcardService.GetDueFlashcardsAsync(workspaceId, topicId, limit, ct);
         return HandleResult(result);
     }
 
     [HttpGet("topics/{topicId:guid}/flashcards/due")]
-    public async Task<IActionResult> GetTopicDueFlashcards(Guid workspaceId, Guid topicId, CancellationToken ct)
+    public async Task<IActionResult> GetTopicDueFlashcards(
+        Guid workspaceId,
+        Guid topicId,
+        [FromQuery] int? limit,
+        CancellationToken ct)
     {
-        var result = await _flashcardService.GetDueFlashcardsAsync(workspaceId, topicId, ct);
+        var result = await _flashcardService.GetDueFlashcardsAsync(workspaceId, topicId, limit, ct);
         return HandleResult(result);
     }
 

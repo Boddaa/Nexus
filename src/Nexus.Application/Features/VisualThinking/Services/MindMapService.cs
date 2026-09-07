@@ -131,11 +131,36 @@ public class MindMapService : IMindMapService
             return Result.Failure<MindMapDetailDto>(new Error("MindMap.NotFound", "Mind map not found or access denied."));
         }
 
-        // Bounded single query for nodes
+        var maxNodes = _options.MaxNodesPerMindMap > 0 ? _options.MaxNodesPerMindMap : 1000;
+        var maxEdges = _options.MaxEdgesPerMindMap > 0 ? _options.MaxEdgesPerMindMap : 2000;
+
+        var totalNodes = await _context.MindMapNodes
+            .AsNoTracking()
+            .CountAsync(n => n.MindMapId == mindMapId && !n.IsDeleted, cancellationToken);
+
+        if (totalNodes > maxNodes)
+        {
+            return Result.Failure<MindMapDetailDto>(new Error(
+                "MindMap.LimitExceeded",
+                $"Mind map exceeds maximum allowable capacity ({totalNodes} nodes > limit of {maxNodes})."));
+        }
+
+        var totalEdges = await _context.MindMapEdges
+            .AsNoTracking()
+            .CountAsync(e => e.MindMapId == mindMapId && !e.IsDeleted, cancellationToken);
+
+        if (totalEdges > maxEdges)
+        {
+            return Result.Failure<MindMapDetailDto>(new Error(
+                "MindMap.LimitExceeded",
+                $"Mind map exceeds maximum allowable capacity ({totalEdges} edges > limit of {maxEdges})."));
+        }
+
+        // Single query for nodes within validated capacity
         var nodes = await _context.MindMapNodes
             .AsNoTracking()
             .Where(n => n.MindMapId == mindMapId && !n.IsDeleted)
-            .Take(_options.MaxNodesPerMindMap)
+            .Take(maxNodes)
             .Select(n => new MindMapNodeDto(
                 n.Id,
                 n.MindMapId,
@@ -160,7 +185,7 @@ public class MindMapService : IMindMapService
         var edges = await _context.MindMapEdges
             .AsNoTracking()
             .Where(e => e.MindMapId == mindMapId && !e.IsDeleted)
-            .Take(_options.MaxEdgesPerMindMap)
+            .Take(maxEdges)
             .Select(e => new MindMapEdgeDto(
                 e.Id,
                 e.MindMapId,

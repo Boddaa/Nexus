@@ -141,10 +141,10 @@ public class DocumentsEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         // User B attempts to access Document A
         var unauthorizedGet = await clientB.GetAsync($"/api/workspaces/{workspaceA.Id}/documents/{docA!.Id}");
-        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedGet.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, unauthorizedGet.StatusCode);
 
         // User B attempts to delete Document A
         var unauthorizedDelete = await clientB.DeleteAsync($"/api/workspaces/{workspaceA.Id}/documents/{docA.Id}");
-        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedDelete.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, unauthorizedDelete.StatusCode);
     }
 }

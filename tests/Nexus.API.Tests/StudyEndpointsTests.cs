@@ -283,9 +283,9 @@ public class StudyEndpointsTests : IClassFixture<AiMockWebApplicationFactory>
         Assert.Single(safeQuiz.Questions);
         Assert.Equal("Secret Q?", safeQuiz.Questions[0].QuestionText);
 
-        // 2. Bob requests full quiz (safe=false) -> 401 Unauthorized (Quiz.AccessDenied)
+        // 2. Bob requests full quiz (safe=false) -> 403 Forbidden (Quiz.AccessDenied)
         var bobFullRes = await clientBob.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}?safe=false");
-        Assert.Equal(HttpStatusCode.Unauthorized, bobFullRes.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, bobFullRes.StatusCode);
 
         // 3. Alice (creator & workspace owner) requests full quiz (safe=false) -> 200 OK with answer key
         var aliceFullRes = await clientAlice.GetAsync($"/api/workspaces/{workspaceAlice.Id}/study/quizzes/{quizId}?safe=false");

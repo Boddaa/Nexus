@@ -1,8 +1,10 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,10 +15,12 @@ namespace Nexus.API.Tests;
 
 public class SecurityAndHardeningTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public SecurityAndHardeningTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -37,7 +41,7 @@ public class SecurityAndHardeningTests : IClassFixture<CustomWebApplicationFacto
             .WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Production");
-                builder.UseSetting("ConnectionStrings:DefaultConnection", "InMemory:SecTests_" + Guid.NewGuid().ToString("N"));
+                builder.UseSetting("ConnectionStrings:DefaultConnection", "Server=localhost;Database=NexusDb;Trusted_Connection=True;");
                 builder.UseSetting("JwtSettings:SecretKey", "");
             });
 
@@ -52,7 +56,7 @@ public class SecurityAndHardeningTests : IClassFixture<CustomWebApplicationFacto
             .WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Production");
-                builder.UseSetting("ConnectionStrings:DefaultConnection", "InMemory:SecTests_" + Guid.NewGuid().ToString("N"));
+                builder.UseSetting("ConnectionStrings:DefaultConnection", "Server=localhost;Database=NexusDb;Trusted_Connection=True;");
                 builder.UseSetting("JwtSettings:SecretKey", "ShortKeyUnder32Chars");
             });
 
@@ -61,18 +65,89 @@ public class SecurityAndHardeningTests : IClassFixture<CustomWebApplicationFacto
     }
 
     [Fact]
-    public void Production_Environment_With_Valid_SecretKey_Should_Succeed()
+    public void Production_Environment_With_InMemory_Database_Should_Fail_Fast()
     {
         var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Production");
-                builder.UseSetting("ConnectionStrings:DefaultConnection", "InMemory:SecTests_" + Guid.NewGuid().ToString("N"));
+                builder.UseSetting("ConnectionStrings:DefaultConnection", "InMemory:ProdShouldFail");
                 builder.UseSetting("JwtSettings:SecretKey", "A_Very_Strong_Production_Secret_Key_32_Bytes_Long!");
+            });
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>()
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Production");
+                    builder.ConfigureAppConfiguration((context, config) =>
+                    {
+                        config.AddInMemoryCollection(new Dictionary<string, string?>
+                        {
+                            ["Jwt:SecretKey"] = "ProductionVeryStrongSecureKey1234567890123456!",
+                            ["ConnectionStrings:DefaultConnection"] = "InMemory:NexusProductionDb",
+                            ["Database:ApplyMigrationsOnStartup"] = "false"
+                        });
+                    });
+                });
+
+            using var client = factory.CreateClient();
+        });
+    }
+
+    [Fact]
+    public void Development_Environment_With_InMemory_Database_Should_Start()
+    {
+        using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((context, config) =>
+                {
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ConnectionStrings:DefaultConnection"] = "InMemory:NexusDevDb",
+                        ["Database:ApplyMigrationsOnStartup"] = "false"
+                    });
+                });
             });
 
         using var client = factory.CreateClient();
         Assert.NotNull(client);
+    }
+
+    [Fact]
+    public async Task Unauthenticated_Access_To_Protected_Endpoint_Should_Return_401()
+    {
+        using var unauthenticatedClient = _factory.CreateClient();
+        var randomWorkspaceId = Guid.NewGuid();
+        var response = await unauthenticatedClient.GetAsync($"/api/workspaces/{randomWorkspaceId}/documents");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Authenticated_Access_To_Forbidden_Workspace_Should_Return_403()
+    {
+        using var clientA = _factory.CreateClient();
+        var userAEmail = $"userA_{Guid.NewGuid():N}@nexus.ai";
+        var regResA = await clientA.PostAsJsonAsync("/api/auth/register", new Nexus.Application.DTOs.Auth.RegisterRequest(userAEmail, "Password123!", "User A"));
+        var authA = await regResA.Content.ReadFromJsonAsync<Nexus.Application.DTOs.Auth.AuthResponse>();
+
+        clientA.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authA!.Token);
+        var wsRes = await clientA.PostAsJsonAsync("/api/workspaces", new Nexus.Application.DTOs.Workspaces.CreateWorkspaceRequest("Workspace A", "Description A", "📁"));
+        var ws = await wsRes.Content.ReadFromJsonAsync<Nexus.Application.DTOs.Workspaces.WorkspaceDto>();
+
+        // User B
+        using var clientB = _factory.CreateClient();
+        var userBEmail = $"userB_{Guid.NewGuid():N}@nexus.ai";
+        var regResB = await clientB.PostAsJsonAsync("/api/auth/register", new Nexus.Application.DTOs.Auth.RegisterRequest(userBEmail, "Password123!", "User B"));
+        var authB = await regResB.Content.ReadFromJsonAsync<Nexus.Application.DTOs.Auth.AuthResponse>();
+
+        clientB.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authB!.Token);
+
+        // Client B tries to access Workspace A documents
+        var forbiddenResponse = await clientB.GetAsync($"/api/workspaces/{ws!.Id}/documents");
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenResponse.StatusCode);
     }
 
     [Fact]

@@ -17,18 +17,25 @@ public class NoteService : INoteService
         _currentUserService = currentUserService;
     }
 
-    private async Task<bool> HasWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
+    private async Task<Result> ValidateWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
     {
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId is null)
         {
-            return false;
+            return Result.Failure(Error.Unauthorized);
         }
 
         var userId = _currentUserService.UserId.Value;
-        return await _context.Workspaces
+        var hasAccess = await _context.Workspaces
             .AsNoTracking()
             .AnyAsync(w => w.Id == workspaceId && !w.IsDeleted &&
                 (w.OwnerId == userId || w.Members.Any(m => m.UserId == userId && !m.IsDeleted)), cancellationToken);
+
+        if (!hasAccess)
+        {
+            return Result.Failure(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
+        }
+
+        return Result.Success();
     }
 
     public async Task<Result<IReadOnlyList<NoteSummaryDto>>> GetNotesAsync(
@@ -37,9 +44,10 @@ public class NoteService : INoteService
         bool? isPinned = null,
         CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<IReadOnlyList<NoteSummaryDto>>(Error.Unauthorized);
+            return Result.Failure<IReadOnlyList<NoteSummaryDto>>(accessCheck.Error);
         }
 
         var query = _context.Notes
@@ -78,9 +86,10 @@ public class NoteService : INoteService
 
     public async Task<Result<NoteDto>> GetNoteByIdAsync(Guid workspaceId, Guid noteId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<NoteDto>(Error.Unauthorized);
+            return Result.Failure<NoteDto>(accessCheck.Error);
         }
 
         var note = await _context.Notes
@@ -110,9 +119,10 @@ public class NoteService : INoteService
 
     public async Task<Result<NoteDto>> CreateNoteAsync(Guid workspaceId, CreateNoteRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<NoteDto>(Error.Unauthorized);
+            return Result.Failure<NoteDto>(accessCheck.Error);
         }
 
         string? pageTitle = null;
@@ -191,9 +201,10 @@ public class NoteService : INoteService
 
     public async Task<Result<NoteDto>> UpdateNoteAsync(Guid workspaceId, Guid noteId, UpdateNoteRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<NoteDto>(Error.Unauthorized);
+            return Result.Failure<NoteDto>(accessCheck.Error);
         }
 
         var note = await _context.Notes
@@ -279,9 +290,10 @@ public class NoteService : INoteService
 
     public async Task<Result> DeleteNoteAsync(Guid workspaceId, Guid noteId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure(Error.Unauthorized);
+            return accessCheck;
         }
 
         var note = await _context.Notes

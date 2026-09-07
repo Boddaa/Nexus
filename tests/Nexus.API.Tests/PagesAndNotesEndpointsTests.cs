@@ -155,7 +155,7 @@ public class PagesAndNotesEndpointsTests : IClassFixture<CustomWebApplicationFac
 
         // User A tries to get User B's pages
         var response = await clientA.GetAsync($"/api/workspaces/{workspaceB.Id}/pages");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     #endregion
@@ -256,7 +256,7 @@ public class PagesAndNotesEndpointsTests : IClassFixture<CustomWebApplicationFac
         var (clientB, userB, workspaceB) = await CreateUserAndWorkspaceAsync("user_nb");
 
         var response = await clientA.GetAsync($"/api/workspaces/{workspaceB.Id}/notes");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     #endregion

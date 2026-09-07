@@ -54,7 +54,18 @@ public abstract class ApiControllerBase : ControllerBase
             return NotFound(new { error.Code, error.Description });
         }
 
-        if (error == Error.Unauthorized || error.Code.EndsWith(".Unauthorized") || error.Code.Contains("AccessDenied") || error.Code.Contains("Unauthorized"))
+        // 403 Forbidden: specifically for access denial or lack of permission
+        if (error == Error.Forbidden ||
+            error.Code.EndsWith(".Forbidden") ||
+            error.Code.Contains("Forbidden") ||
+            error.Code.EndsWith(".AccessDenied") ||
+            error.Code.Contains("AccessDenied"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error.Code, error.Description });
+        }
+
+        // 401 Unauthorized: for unauthenticated identity or missing credentials
+        if (error == Error.Unauthorized || error.Code.EndsWith(".Unauthorized") || error.Code.Contains("Unauthorized"))
         {
             return Unauthorized(new { error.Code, error.Description });
         }

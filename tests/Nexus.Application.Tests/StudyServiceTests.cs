@@ -321,6 +321,45 @@ public class StudyServiceTests
     }
 
     [Fact]
+    public async Task FlashcardService_GetDueFlashcards_EnforcesBoundsAndClamping()
+    {
+        var spacedRep = new SpacedRepetitionService();
+        var service = new FlashcardService(_context, _currentUserService, spacedRep, Options.Create(new StudyOptions()), NullLogger<FlashcardService>.Instance);
+
+        // Seed 150 due flashcards for Alice
+        var now = DateTime.UtcNow;
+        var cards = new List<Flashcard>();
+        for (int i = 0; i < 150; i++)
+        {
+            cards.Add(new Flashcard
+            {
+                WorkspaceId = _workspaceAlice.Id,
+                UserId = _alice.Id,
+                FrontText = $"Due Q{i}",
+                BackText = $"Due A{i}",
+                NextReviewDateUtc = now.AddMinutes(-i - 1)
+            });
+        }
+        _context.Flashcards.AddRange(cards);
+        await _context.SaveChangesAsync();
+
+        // 1. Default limit (no limit passed) should bound at 100 items
+        var defaultRes = await service.GetDueFlashcardsAsync(_workspaceAlice.Id);
+        Assert.True(defaultRes.IsSuccess);
+        Assert.Equal(100, defaultRes.Value.Count);
+
+        // 2. Explicit custom limit within bounds (e.g. 25)
+        var customRes = await service.GetDueFlashcardsAsync(_workspaceAlice.Id, limit: 25);
+        Assert.True(customRes.IsSuccess);
+        Assert.Equal(25, customRes.Value.Count);
+
+        // 3. Excessively high limit request (e.g. 5000) is clamped to MaxDueLimit (500, but only 150 exist)
+        var clampedRes = await service.GetDueFlashcardsAsync(_workspaceAlice.Id, limit: 5000);
+        Assert.True(clampedRes.IsSuccess);
+        Assert.Equal(150, clampedRes.Value.Count);
+    }
+
+    [Fact]
     public async Task FlashcardService_GenerateFlashcards_ParsesJsonDefensively()
     {
         var spacedRep = new SpacedRepetitionService();

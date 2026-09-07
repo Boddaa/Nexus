@@ -17,25 +17,33 @@ public class PageService : IPageService
         _currentUserService = currentUserService;
     }
 
-    private async Task<bool> HasWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
+    private async Task<Result> ValidateWorkspaceAccessAsync(Guid workspaceId, CancellationToken cancellationToken)
     {
         if (!_currentUserService.IsAuthenticated || _currentUserService.UserId is null)
         {
-            return false;
+            return Result.Failure(Error.Unauthorized);
         }
 
         var userId = _currentUserService.UserId.Value;
-        return await _context.Workspaces
+        var hasAccess = await _context.Workspaces
             .AsNoTracking()
             .AnyAsync(w => w.Id == workspaceId && !w.IsDeleted &&
                 (w.OwnerId == userId || w.Members.Any(m => m.UserId == userId && !m.IsDeleted)), cancellationToken);
+
+        if (!hasAccess)
+        {
+            return Result.Failure(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
+        }
+
+        return Result.Success();
     }
 
     public async Task<Result<IReadOnlyList<PageTreeNodeDto>>> GetPageTreeAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<IReadOnlyList<PageTreeNodeDto>>(Error.Unauthorized);
+            return Result.Failure<IReadOnlyList<PageTreeNodeDto>>(accessCheck.Error);
         }
 
         // Single database query: fetch all active pages in the workspace
@@ -71,9 +79,10 @@ public class PageService : IPageService
 
     public async Task<Result<PageDto>> GetPageByIdAsync(Guid workspaceId, Guid pageId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<PageDto>(Error.Unauthorized);
+            return Result.Failure<PageDto>(accessCheck.Error);
         }
 
         var page = await _context.Pages
@@ -108,9 +117,10 @@ public class PageService : IPageService
 
     public async Task<Result<PageDto>> CreatePageAsync(Guid workspaceId, CreatePageRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<PageDto>(Error.Unauthorized);
+            return Result.Failure<PageDto>(accessCheck.Error);
         }
 
         if (request.ParentPageId.HasValue)
@@ -158,9 +168,10 @@ public class PageService : IPageService
 
     public async Task<Result<PageDto>> UpdatePageAsync(Guid workspaceId, Guid pageId, UpdatePageRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<PageDto>(Error.Unauthorized);
+            return Result.Failure<PageDto>(accessCheck.Error);
         }
 
         var page = await _context.Pages
@@ -204,9 +215,10 @@ public class PageService : IPageService
 
     public async Task<Result<PageDto>> MovePageAsync(Guid workspaceId, Guid pageId, MovePageRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure<PageDto>(Error.Unauthorized);
+            return Result.Failure<PageDto>(accessCheck.Error);
         }
 
         var page = await _context.Pages
@@ -288,9 +300,10 @@ public class PageService : IPageService
 
     public async Task<Result> DeletePageAsync(Guid workspaceId, Guid pageId, CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkspaceAccessAsync(workspaceId, cancellationToken))
+        var accessCheck = await ValidateWorkspaceAccessAsync(workspaceId, cancellationToken);
+        if (!accessCheck.IsSuccess)
         {
-            return Result.Failure(Error.Unauthorized);
+            return accessCheck;
         }
 
         var allPages = await _context.Pages

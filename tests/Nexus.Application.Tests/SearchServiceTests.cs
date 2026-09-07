@@ -297,7 +297,7 @@ public class SearchServiceTests
         // Current user is Alice (_testUser), trying to search Bob's workspace (_workspaceB)
         var result = await _searchService.SearchAsync(_workspaceB.Id, new SearchRequest("Anything"));
         Assert.False(result.IsSuccess);
-        Assert.Equal(Error.Unauthorized, result.Error);
+        Assert.Equal("Workspace.AccessDenied", result.Error.Code);
     }
 
     #endregion

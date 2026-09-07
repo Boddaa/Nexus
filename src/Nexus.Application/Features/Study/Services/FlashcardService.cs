@@ -87,6 +87,7 @@ public class FlashcardService : IFlashcardService
     public async Task<Result<IReadOnlyList<FlashcardDto>>> GetDueFlashcardsAsync(
         Guid workspaceId,
         Guid? topicId = null,
+        int? limit = null,
         CancellationToken cancellationToken = default)
     {
         var userId = _currentUserService.UserId;
@@ -100,6 +101,10 @@ public class FlashcardService : IFlashcardService
             return Result.Failure<IReadOnlyList<FlashcardDto>>(new Error("Workspace.AccessDenied", "User does not have access to this workspace."));
         }
 
+        const int DefaultDueLimit = 100;
+        const int MaxDueLimit = 500;
+        var effectiveLimit = limit.HasValue ? Math.Clamp(limit.Value, 1, MaxDueLimit) : DefaultDueLimit;
+
         var now = DateTime.UtcNow;
         var query = _context.Flashcards
             .AsNoTracking()
@@ -112,6 +117,7 @@ public class FlashcardService : IFlashcardService
 
         var list = await query
             .OrderBy(f => f.NextReviewDateUtc)
+            .Take(effectiveLimit)
             .Select(f => MapToDto(f))
             .ToListAsync(cancellationToken);
 

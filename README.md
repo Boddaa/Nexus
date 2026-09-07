@@ -98,13 +98,32 @@ NEXUS includes 8 fully realized, integrated modules:
 - **AI Mind Map Generator**: Atomic generation and persistence of full mind maps directly from workspace knowledge documents.
 - **Related Knowledge Finder**: Discovers semantic connections between canvas nodes and existing workspace materials.
 
-### 8. Production Hardening & Finalization (Phase 8)
+### 8. Production Hardening & Finalization (Phase 8 & Final Hardening Pass)
 - **Strict Security**: Fail-fast validation of JWT secrets in production; rejection of hardcoded fallback credentials.
+- **Fail-Fast Database Validation**: In Production environments, `InMemory:` database provider is strictly rejected; migration execution failures immediately abort startup.
+- **Precise API Authorization Semantics**: Strict segregation between `401 Unauthorized` (unauthenticated caller) and `403 Forbidden` (authenticated caller lacking workspace access).
 - **HTTPS & CORS Lockdown**: Environment-aware metadata enforcement and origin-restricted CORS policies.
 - **Information Leak Prevention**: Centralized exception middleware sanitizing error responses in production.
+- **Bounded Endpoints & Safety Ceilings**: Server-side bounds clamping on retrieval endpoints (e.g. Flashcards clamped at 500, default 100) and explicit `MindMap.LimitExceeded` error reporting for oversized maps.
+- **Obsolete Legacy DI Cleanup**: Prototype AI mock registrations (`IChatService`, `IVectorStore`, etc.) removed from production dependency injection.
 - **Health Checks**: `/health` endpoint validating process state and database connectivity.
 - **Performance Optimizations**: Database-level count projections eliminating redundant in-memory collection loading; bounded conversation histories; explicit HTTP timeouts for external AI providers.
 - **Multi-Instance Migration Decoupling**: Configurable startup migrations via `Database:ApplyMigrationsOnStartup`.
+
+---
+
+## 🔒 API Error & Authorization Contract
+
+NEXUS strictly adheres to REST HTTP status code specifications:
+
+| Status Code | Semantics | Trigger Condition |
+|---|---|---|
+| `400 Bad Request` | Validation or malformed input failure | Missing/invalid request fields, unsupported formats or entity types |
+| `401 Unauthorized` | Unauthenticated access | Missing, expired, or invalid JWT Bearer token |
+| `403 Forbidden` | Authenticated but access denied | Authenticated user attempting to access a foreign workspace or restricted resource |
+| `404 Not Found` | Resource not found | Requested entity ID does not exist in the specified workspace |
+| `409 Conflict` | Resource state conflict | Duplicate email during registration, concurrent state conflict |
+| `500 Internal Server Error` | Unhandled server fault | Sanitized generic response in Production; details logged securely server-side |
 
 ---
 
@@ -114,6 +133,8 @@ NEXUS includes 8 fully realized, integrated modules:
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (10.0.100 or later)
 - SQL Server (LocalDB, SQL Server Express, or standard SQL Server instance)
 - *(Optional)* OpenAI API key or [Ollama](https://ollama.com/) for local LLM inference
+
+> **Note on Containerization**: Docker / container recipes referenced in architectural notes serve as optional deployment reference patterns. NEXUS builds and runs natively directly via the .NET 10 SDK without requiring checked-in container files.
 
 ### Configuration
 
@@ -127,7 +148,7 @@ In production, supply secrets via environment variables or cloud secret stores:
 
 | Variable | Description | Example |
 |---|---|---|
-| `ConnectionStrings__DefaultConnection` | SQL Server connection string | `Server=sql.internal;Database=NexusDb;User Id=...` |
+| `ConnectionStrings__DefaultConnection` | SQL Server connection string (Production strictly rejects `InMemory:`) | `Server=sql.internal;Database=NexusDb;User Id=...` |
 | `JwtSettings__SecretKey` | JWT Signing Key (>= 32 characters / 256 bits) | `YourStrongProductionSecretKeyMustBe32CharsLong!` |
 | `JwtSettings__Issuer` | Valid JWT Issuer | `https://api.nexus.workspace` |
 | `JwtSettings__Audience` | Valid JWT Audience | `https://app.nexus.workspace` |
