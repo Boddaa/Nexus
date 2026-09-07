@@ -31,11 +31,18 @@
     <!-- Brushes -->
     <SolidColorBrush x:Key="BgDarkestBrush" Color="{StaticResource BgDarkestColor}" />
     <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDarkColor}" />
+    <SolidColorBrush x:Key="BgDarkerBrush" Color="#0B1120" />
     <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCardColor}" />
     <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHoverColor}" />
     <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebarColor}" />
     <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInputColor}" />
 
+    <!-- Surface & Card Aliases -->
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource BgCardColor}" />
+    <SolidColorBrush x:Key="SurfaceLightBrush" Color="{StaticResource BgHoverColor}" />
+
+    <!-- Accents -->
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentPrimaryColor}" />
     <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource AccentPrimaryColor}" />
     <SolidColorBrush x:Key="AccentPrimaryHoverBrush" Color="{StaticResource AccentPrimaryHoverColor}" />
     <SolidColorBrush x:Key="AccentSecondaryBrush" Color="{StaticResource AccentSecondaryColor}" />
@@ -43,11 +50,18 @@
     <SolidColorBrush x:Key="AccentEmeraldBrush" Color="{StaticResource AccentEmeraldColor}" />
     <SolidColorBrush x:Key="AccentAmberBrush" Color="{StaticResource AccentAmberColor}" />
     <SolidColorBrush x:Key="AccentRoseBrush" Color="{StaticResource AccentRoseColor}" />
+    <SolidColorBrush x:Key="AccentBlueBrush" Color="#3B82F6" />
+    <SolidColorBrush x:Key="AccentPurpleBrush" Color="{StaticResource AccentSecondaryColor}" />
+    <SolidColorBrush x:Key="AccentOrangeBrush" Color="{StaticResource AccentAmberColor}" />
+    <SolidColorBrush x:Key="AccentRedBrush" Color="{StaticResource AccentRoseColor}" />
 
+    <!-- Borders -->
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderLightColor}" />
     <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtleColor}" />
     <SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource BorderLightColor}" />
     <SolidColorBrush x:Key="BorderAccentBrush" Color="{StaticResource BorderAccentColor}" />
 
+    <!-- Text -->
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
     <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />

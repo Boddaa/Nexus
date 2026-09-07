@@ -11,8 +11,10 @@
     <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter" />
     <conv:InverseBooleanConverter x:Key="InverseBoolConverter" />
     <conv:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVisConverter" />
+    <conv:StringNotEmptyToVisibilityConverter x:Key="StringToVisibilityConverter" />
     <conv:NullToVisibilityConverter x:Key="NullToVisConverter" />
     <conv:GreaterThanZeroToVisibilityConverter x:Key="GreaterThanZeroToVisConverter" />
+    <conv:GreaterThanZeroToVisibilityConverter x:Key="CountToVisConverter" />
 
     <!-- Global Base Font -->
     <Style TargetType="{x:Type TextBlock}">
@@ -126,6 +128,14 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+ 
+    <!-- Aliases for Modern buttons used in BoardsView, MindMapsView, and StudyView -->
+    <Style x:Key="ModernButtonPrimary" TargetType="{x:Type Button}" BasedOn="{StaticResource PrimaryButton}" />
+    <Style x:Key="ModernButtonSecondary" TargetType="{x:Type Button}" BasedOn="{StaticResource SecondaryButton}" />
+    <Style x:Key="GhostButton" TargetType="{x:Type Button}" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
 
     <!-- Modern Sidebar Navigation Button -->
@@ -241,6 +251,59 @@
         <Setter Property="Effect">
             <Setter.Value>
                 <DropShadowEffect BlurRadius="15" Direction="270" Opacity="0.2" ShadowDepth="4" Color="#000000" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Modern ComboBox -->
+    <Style x:Key="ModernComboBox" TargetType="{x:Type ComboBox}">
+        <Setter Property="Background" Value="{StaticResource BgInputBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Modern ListBox -->
+    <Style x:Key="ModernListBox" TargetType="{x:Type ListBox}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="{x:Type ListBoxItem}">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0,0,0,4" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                <Border x:Name="border"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="6"
+                                        Padding="{TemplateBinding Padding}"
+                                        SnapsToDevicePixels="True">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="border" Property="Background" Value="{StaticResource BgHoverBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="border" Property="Background" Value="{StaticResource BgCardBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
             </Setter.Value>
         </Setter>
     </Style>
