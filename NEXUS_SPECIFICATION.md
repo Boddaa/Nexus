@@ -418,18 +418,27 @@ Topic
 
 ## 🚀 11. مراحل بناء وتطوير المشروع (Implementation Roadmap)
 
-لتفادي التعقيد وضمان جودة الكود، ينفذ المشروع عبر **7 مراحل متتالية**:
+لتفادي التعقيد وضمان جودة الكود، نُفّذ المشروع عبر **8 مراحل متتالية ومحكمة**:
 
-| المرحلة | العنوان | نطاق العمل والمخرجات الأساسية |
-|---|---|---|
-| **Phase 1** | **Foundation** | إعداد الـ Solution، طبقات Clean Architecture، إعداد EF Core و SQL Server، المصادقة (Identity & JWT)، إدارة الـ Workspaces، والبنية الأساسية للتنقل في الـ Desktop Client. |
-| **Phase 2** | **Knowledge** | رفع المستندات (PDF / Docs)، نظام تخزين الملفات (Storage)، استخراج النصوص (Text Extraction)، التقطيع الذكي (Chunking)، توليد الـ Embeddings، والبحث الشعاعي (Vector Search). |
-| **Phase 3** | **AI & RAG** | محرك الـ RAG، نظام المحادثة الذكية (AI Chat)، الاستشهادات المرجعية الدقيقة (Citations)، التلخيص الآلي (Summarization)، وواجهة *Ask Workspace*. |
-| **Phase 4** | **Productivity** | إدارة الصفحات (Pages)، الملاحظات الغنية (Notes)، إدارة المهام (Tasks)، نظام الوسوم (Tags)، ومحرك البحث الهجين الموحد. |
-| **Phase 5** | **Visual Thinking** | لوحات المذاكرة (Study / Kanban Board)، قماش الرسم (Canvas)، الخرائط الذهنية (Mind Maps & Graph Nodes/Edges)، وخاصية السحب والإفلات (Drag & Drop). |
-| **Phase 6** | **Study Engine** | وضع المذاكرة التفاعلي (Study Mode)، البطاقات التعليمية (Flashcards مع Spaced Repetition)، توليد الاختبارات (Quizzes)، تقييم المعرفة وتوصيات الـ AI Tutor. |
-| **Phase 7** | **Polish & Production** | تحسين الـ UI/UX، الحركات الدقيقة (Animations)، التخزين المؤقت (Caching)، السجلات والتعامل مع الأخطاء (Logging & Error Handling)، تحسين الأداء، واختبارات الوحدة والتكامل (Unit & Integration Testing). |
+| المرحلة | العنوان | نطاق العمل والمخرجات الأساسية | الحالة (Status) |
+|---|---|---|:---:|
+| **Phase 1** | **Foundation** | إعداد الـ Solution، طبقات Clean Architecture، إعداد EF Core و SQL Server، المصادقة (Identity & JWT)، إدارة الـ Workspaces، والبنية الأساسية للتنقل في الـ Desktop Client (WPF MVVM). | ✅ مكتمل ومختبر |
+| **Phase 2** | **Knowledge Workspace Core** | إدارة الصفحات (Pages) والشجرة الهرمية، الملاحظات الغنية (Notes) والوسوم، رفع وإدارة المستندات (PDF / Docx / Markdown / Text)، والبحث النصي الأساسي. | ✅ مكتمل ومختبر |
+| **Phase 3** | **Embeddings & Vector Search** | التقطيع الذكي للمستندات (Chunking) مع التداخل الرمزي، مزودات الـ Embeddings (OpenAI / Ollama / In-Memory)، والتخزين الشعاعي والبحث بالتشابه الدلالي (Cosine Similarity). | ✅ مكتمل ومختبر |
+| **Phase 4** | **RAG + AI Assistant** | محرك الـ RAG، نظام المحادثة الذكية (AI Conversations & Chat)، استرجاع السياق الذكي من مستندات الـ Workspace، والاستشهادات المرجعية الدقيقة (Citations & Source Snippets). | ✅ مكتمل ومختبر |
+| **Phase 5** | **Knowledge Intelligence** | تدفقات الذكاء الاصطناعي التوليدي: التلخيص الآلي (Summarize)، الشرح المتعمق (Explain)، استخراج الأفكار الرئيسية (Key Points)، وتوليد مواد الدراسة وحفظها مباشرة في الملاحظات. | ✅ مكتمل ومختبر |
+| **Phase 6** | **Study Engine & AI Tutor** | مواضيع المذاكرة (Study Topics)، البطاقات التعليمية التكرارية بنظام SuperMemo-2 (SM-2 Spaced Repetition)، توليد الاختبارات التفاعلية وتصحيحها، ونظام الـ AI Tutor والتقييم المعرفي. | ✅ مكتمل ومختبر |
+| **Phase 7** | **Visual Thinking & Canvas** | لوحات المذاكرة وإدارة المهام (Boards & Kanban Items)، الخرائط الذهنية (Mind Maps & Nodes/Edges)، خوارزميات التوزيع التلقائي (Hierarchical Tree / Force-Directed)، وتوليد الخرائط بالذكاء الاصطناعي. | ✅ مكتمل ومختبر |
+| **Phase 8** | **Production Hardening & Finalization** | الأمان المشدد (JWT Fail-Fast / Environment-aware HTTPS / CORS Lockdown)، منع تسريب البيانات الحساسة عبر Middleware موحد، فحص صحة النظام (`/health`)، تحسين استعلامات الأداء، وتعزيز متانة الـ Desktop Client. | ✅ مكتمل ومختبر |
 
 ---
 
-*Document created for project tracking and phased execution in NEXUS workspace.*
+### 🔮 تطلعات مستقبلية (Future Roadmap / Post-Phase 8 Candidates)
+
+- **التعاون اللحظي (Real-Time Multi-User Collaboration):** دعم التحرير المشترك باستخدام SignalR أو CRDT.
+- **تطبيق الويب والهواتف (Web & Mobile Clients):** واجهة ويب تفاعلية وتطبيق للمراجعة السريعة على الهواتف الذكية.
+- **الرسوم البيانية المعرفية المعقدة (Graph Database Integration):** ربط الكيانات عبر محرك رسومي متخصص عند توسع أحجام البيانات بشكل ضخم.
+
+---
+
+*Document updated and verified for Phase 8 completion in NEXUS workspace.*

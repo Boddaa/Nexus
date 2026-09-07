@@ -13,10 +13,17 @@ obj/
 
 # Test results
 TestResults/
+*.trx
 
-# Rider
+# Rider / IDEs
 .idea/
+.vscode/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Logs & Local Secrets
+*.log
+appsettings.*.local.json
+appsettings.local.json

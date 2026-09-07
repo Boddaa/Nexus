@@ -44,8 +44,6 @@ public class NoteService : INoteService
 
         var query = _context.Notes
             .AsNoTracking()
-            .Include(n => n.Page)
-            .Include(n => n.Tags)
             .Where(n => n.WorkspaceId == workspaceId && !n.IsDeleted);
 
         if (pageId.HasValue)

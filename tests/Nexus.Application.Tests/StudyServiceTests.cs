@@ -231,6 +231,46 @@ public class StudyServiceTests
         Assert.Empty(list.Value);
     }
 
+    [Fact]
+    public async Task StudyTopicService_UpdateTopicAsync_CorrectlyUpdatesCounts_WithoutFullCollectionLoading()
+    {
+        var topicService = new StudyTopicService(_context, _currentUserService, NullLogger<StudyTopicService>.Instance);
+        var created = await topicService.CreateTopicAsync(_workspaceAlice.Id, new CreateStudyTopicRequest("Data Structures"));
+        Assert.True(created.IsSuccess);
+
+        var flashcard = new Flashcard
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            StudyTopicId = created.Value.Id,
+            FrontText = "What is a queue?",
+            BackText = "FIFO data structure",
+            Difficulty = "Easy",
+            EaseFactor = 2.5,
+            IntervalDays = 1,
+            Repetitions = 0,
+            NextReviewDateUtc = DateTime.UtcNow
+        };
+        _context.Flashcards.Add(flashcard);
+
+        var quiz = new Quiz
+        {
+            WorkspaceId = _workspaceAlice.Id,
+            UserId = _alice.Id,
+            StudyTopicId = created.Value.Id,
+            Title = "Queue Quiz",
+            DifficultyLevel = "Easy"
+        };
+        _context.Quizzes.Add(quiz);
+        await _context.SaveChangesAsync();
+
+        var updated = await topicService.UpdateTopicAsync(_workspaceAlice.Id, created.Value.Id, new UpdateStudyTopicRequest("Updated Data Structures", "Updated description"));
+        Assert.True(updated.IsSuccess);
+        Assert.Equal("Updated Data Structures", updated.Value.Title);
+        Assert.Equal(1, updated.Value.FlashcardCount);
+        Assert.Equal(1, updated.Value.QuizCount);
+    }
+
     // ==================== 3. Study Session Service Tests ====================
 
     [Fact]

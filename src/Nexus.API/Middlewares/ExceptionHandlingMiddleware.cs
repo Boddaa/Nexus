@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
-using Nexus.Domain.Common;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Hosting;
 
 namespace Nexus.API.Middlewares;
 
@@ -8,11 +9,16 @@ public class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+    private readonly IHostEnvironment _environment;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    public ExceptionHandlingMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionHandlingMiddleware> logger,
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -28,18 +34,25 @@ public class ExceptionHandlingMiddleware
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+
+        var isDev = _environment.IsDevelopment();
 
         var response = new
         {
             StatusCode = context.Response.StatusCode,
             Message = "An unexpected error occurred. Please try again later.",
-            Detailed = exception.Message
+            Detailed = isDev ? exception.Message : (string?)null
         };
 
-        return context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        var options = new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+        return context.Response.WriteAsync(JsonSerializer.Serialize(response, options));
     }
 }

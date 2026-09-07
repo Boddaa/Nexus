@@ -277,7 +277,6 @@ public class ConversationService : IConversationService
         }
 
         var conversation = await _context.AiConversations
-            .Include(c => c.Messages)
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.WorkspaceId == workspaceId && c.UserId == userId.Value && !c.IsDeleted, cancellationToken);
 
         if (conversation == null)

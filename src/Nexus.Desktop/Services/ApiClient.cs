@@ -804,6 +804,16 @@ public class ApiClient : IApiClient
 
     private async Task<Result<T>> ExtractErrorAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            return Result.Failure<T>(new Error("Auth.Unauthorized", "Session expired or unauthorized. Please log in again."));
+        }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            return Result.Failure<T>(new Error("Auth.Forbidden", "Access denied. You do not have permission to access this resource."));
+        }
+
         try
         {
             var errorDoc = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions, cancellationToken);
@@ -811,6 +821,18 @@ public class ApiClient : IApiClient
             {
                 var code = errorDoc.TryGetProperty("code", out var c) || errorDoc.TryGetProperty("Code", out c) ? c.GetString() : "API.Error";
                 return Result.Failure<T>(new Error(code ?? "API.Error", desc.GetString() ?? "Request failed."));
+            }
+
+            if (errorDoc.TryGetProperty("message", out var msg) || errorDoc.TryGetProperty("Message", out msg))
+            {
+                return Result.Failure<T>(new Error("API.Error", msg.GetString() ?? "Request failed."));
+            }
+
+            if (errorDoc.TryGetProperty("title", out var title))
+            {
+                var detail = errorDoc.TryGetProperty("detail", out var d) ? d.GetString() : null;
+                var text = !string.IsNullOrWhiteSpace(detail) ? $"{title.GetString()}: {detail}" : title.GetString();
+                return Result.Failure<T>(new Error("API.Error", text ?? "Request failed."));
             }
         }
         catch

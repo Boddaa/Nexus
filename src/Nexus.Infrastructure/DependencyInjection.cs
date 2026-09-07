@@ -62,14 +62,26 @@ public static class DependencyInjection
         services.Configure<Nexus.Application.Common.Options.RagOptions>(configuration.GetSection(Nexus.Application.Common.Options.RagOptions.SectionName));
         services.Configure<Nexus.Application.Common.Options.VisualThinkingOptions>(configuration.GetSection(Nexus.Application.Common.Options.VisualThinkingOptions.SectionName));
 
-        services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
-        services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();
+        services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHttpClient<Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddScoped<Nexus.Infrastructure.AI.Embeddings.IEmbeddingProvider, Nexus.Infrastructure.AI.Embeddings.OpenAiEmbeddingProvider>();
         services.AddScoped<Nexus.Infrastructure.AI.Embeddings.IEmbeddingProvider, Nexus.Infrastructure.AI.Embeddings.OllamaEmbeddingProvider>();
         services.AddScoped<IEmbeddingService, Nexus.Infrastructure.AI.Embeddings.EmbeddingService>();
 
-        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OpenAiLlmProvider>();
-        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>();
+        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OpenAiLlmProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        });
+        services.AddHttpClient<Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        });
         services.AddScoped<Nexus.Infrastructure.AI.LLM.ILlmProvider, Nexus.Infrastructure.AI.LLM.OpenAiLlmProvider>();
         services.AddScoped<Nexus.Infrastructure.AI.LLM.ILlmProvider, Nexus.Infrastructure.AI.LLM.OllamaLlmProvider>();
         services.AddScoped<Nexus.Application.Common.Interfaces.ILLMService, Nexus.Infrastructure.AI.LLM.LLMService>();

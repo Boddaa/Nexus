@@ -26,8 +26,27 @@ builder.Services.AddControllers(options =>
 });
 builder.Services.AddEndpointsApiExplorer();
 
-// 3. Configure JWT Authentication
-var secretKey = builder.Configuration["JwtSettings:SecretKey"] ?? "Nexus_Super_Secret_Key_For_Development_32_Bytes_Long!";
+// 3. Health Checks
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database");
+
+// 4. Configure JWT Authentication
+var secretKey = builder.Configuration["JwtSettings:SecretKey"];
+if (!builder.Environment.IsDevelopment())
+{
+    if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Length < 32)
+    {
+        throw new InvalidOperationException("JwtSettings:SecretKey is required and must be at least 32 characters (256 bits) in production.");
+    }
+}
+else
+{
+    if (string.IsNullOrWhiteSpace(secretKey))
+    {
+        secretKey = "Nexus_Super_Secret_Key_For_Development_32_Bytes_Long!";
+    }
+}
+
 var issuer = builder.Configuration["JwtSettings:Issuer"] ?? "NexusAPI";
 var audience = builder.Configuration["JwtSettings:Audience"] ?? "NexusDesktopClient";
 
@@ -38,7 +57,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
+    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -55,7 +74,7 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// 4. Configure Swagger
+// 5. Configure Swagger
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
@@ -78,22 +97,39 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityDefinition("Bearer", securityScheme);
 });
 
-// 5. CORS
+// 6. CORS
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("NexusCorsPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            policy.SetIsOriginAllowed(_ => false);
+        }
     });
 });
 
 var app = builder.Build();
 
-// 6. Database Migration on Startup
-using (var scope = app.Services.CreateScope())
+// 7. Database Migration on Startup (Configurable)
+var applyMigrations = builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup", builder.Environment.IsDevelopment());
+if (applyMigrations)
 {
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     try
     {
@@ -110,7 +146,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// 7. Configure HTTP Pipeline
+// 8. Configure HTTP Pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment())
@@ -123,12 +159,13 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors("AllowAll");
+app.UseCors("NexusCorsPolicy");
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthChecks("/health");
 app.MapControllers();
 
 app.Run();

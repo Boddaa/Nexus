@@ -223,8 +223,6 @@ public class StudyTopicService : IStudyTopicService
         }
 
         var topic = await _context.StudyTopics
-            .Include(t => t.Flashcards)
-            .Include(t => t.Quizzes)
             .FirstOrDefaultAsync(t => t.Id == topicId && t.WorkspaceId == workspaceId && t.UserId == userId.Value && !t.IsDeleted, cancellationToken);
 
         if (topic == null)
@@ -238,6 +236,12 @@ public class StudyTopicService : IStudyTopicService
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        var flashcardCount = await _context.Flashcards
+            .CountAsync(f => f.StudyTopicId == topicId && !f.IsDeleted, cancellationToken);
+
+        var quizCount = await _context.Quizzes
+            .CountAsync(q => q.StudyTopicId == topicId && !q.IsDeleted, cancellationToken);
+
         return Result.Success(new StudyTopicDto(
             topic.Id,
             topic.WorkspaceId,
@@ -247,8 +251,8 @@ public class StudyTopicService : IStudyTopicService
             topic.SourceDocumentId,
             topic.SourcePageId,
             topic.SourceNoteId,
-            topic.Flashcards.Count(f => !f.IsDeleted),
-            topic.Quizzes.Count(q => !q.IsDeleted),
+            flashcardCount,
+            quizCount,
             topic.CreatedAtUtc,
             topic.UpdatedAtUtc
         ));
